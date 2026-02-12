@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { getFullImageUrl } from '../../utils/imageUtil';
 import {
     View,
     Text,
@@ -16,8 +15,9 @@ import { getConversations } from '../../services/messageService';
 import { useAuth } from '../../context/AuthContext';
 import { timeAgo } from '../../utils/dateUtils';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import { getFullImageUrl } from '../../utils/imageUtil';
 
-export default function MessagesScreen() {
+export default function EmployerMessagesScreen() {
     const { user } = useAuth();
     const router = useRouter();
     const [conversations, setConversations] = useState([]);
@@ -61,9 +61,9 @@ export default function MessagesScreen() {
                             style={styles.avatarImage}
                         />
                     ) : (
-                        <View style={[styles.avatarPlaceholder, { backgroundColor: COLORS.primaryLight }]} >
-                            <Text style={styles.avatarText}>
-                                {otherUser.name ? otherUser.name.charAt(0).toUpperCase() : 'U'}
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: COLORS.secondary + '20' }]}>
+                            <Text style={[styles.avatarText, { color: COLORS.secondary }]}>
+                                {otherUser.name ? otherUser.name.charAt(0).toUpperCase() : 'W'}
                             </Text>
                         </View>
                     )}
@@ -72,7 +72,7 @@ export default function MessagesScreen() {
                 <View style={styles.contentContainer}>
                     <View style={styles.headerRow}>
                         <Text style={[styles.userName, isUnread && styles.unreadText]} numberOfLines={1}>
-                            {otherUser.name || 'User'}
+                            {otherUser.name || 'Worker'}
                         </Text>
                         {hasLastMessage && (
                             <View style={styles.timeContainer}>
@@ -113,14 +113,14 @@ export default function MessagesScreen() {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={() => { setRefreshing(true); fetchConversations(); }}
-                        colors={[COLORS.primary]}
+                        colors={[COLORS.secondary]}
                     />
                 }
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Ionicons name="chatbubbles-outline" size={60} color={COLORS.textSecondary} />
                         <Text style={styles.emptyTitle}>No Conversations</Text>
-                        <Text style={styles.emptySubtitle}>Start chatting with employers</Text>
+                        <Text style={styles.emptySubtitle}>Messages from workers will appear here</Text>
                     </View>
                 }
                 ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -161,7 +161,6 @@ const styles = StyleSheet.create({
     avatarText: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: COLORS.primary,
     },
     contentContainer: {
         flex: 1,
@@ -196,7 +195,7 @@ const styles = StyleSheet.create({
     separator: {
         height: 1,
         backgroundColor: COLORS.border,
-        marginLeft: 82, // Align with text start
+        marginLeft: 82,
     },
     emptyContainer: {
         flex: 1,

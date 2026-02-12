@@ -17,6 +17,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS } from '../../../constants/config';
 import { getJobById, hireWorker, rejectApplicant } from '../../../services/jobService';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import { getFullImageUrl } from '../../../utils/imageUtil';
 
 export default function JobApplicantsScreen() {
     const { id } = useLocalSearchParams();
@@ -150,7 +151,7 @@ export default function JobApplicantsScreen() {
                         >
                             <View style={styles.avatar}>
                                 {worker.profilePicture ? (
-                                    <Image source={{ uri: worker.profilePicture }} style={styles.avatarImage} />
+                                    <Image source={{ uri: getFullImageUrl(worker.profilePicture) }} style={styles.avatarImage} />
                                 ) : (
                                     <Ionicons name="person" size={24} color={COLORS.textSecondary} />
                                 )}

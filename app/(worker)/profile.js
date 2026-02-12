@@ -17,9 +17,12 @@ import { translations, LANGUAGES } from '../../constants/translations';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getProfile, updateProfile } from '../../services/userService';
+import { uploadFile } from '../../services/uploadService';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import EditWorkerProfileModal from '../../components/profile/EditWorkerProfileModal';
+import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
 
 export default function ProfileScreen() {
     const { user, logout, updateUser } = useAuth();
@@ -27,6 +30,8 @@ export default function ProfileScreen() {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showLangModal, setShowLangModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
         fetchProfile();
@@ -77,6 +82,47 @@ export default function ProfileScreen() {
         setShowLangModal(false);
     };
 
+    const handleImageSelected = async (imageAsset) => {
+        setUploading(true);
+        try {
+            // Create form data for upload
+            const formData = new FormData();
+            formData.append('file', {
+                uri: imageAsset.uri,
+                type: 'image/jpeg',
+                name: 'profile.jpg',
+            });
+
+            // Upload image
+            const uploadResult = await uploadFile(formData, (progress) => {
+                console.log('Upload progress:', progress);
+            });
+
+            // Update profile with new image URL
+            await updateProfile({ profilePicture: uploadResult.fileUrl });
+
+            // Update local state
+            setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
+            updateUser({ profilePicture: uploadResult.fileUrl });
+        } catch (error) {
+            console.error('Failed to upload image:', error);
+            Alert.alert('Error', 'Failed to upload profile picture');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleSaveProfile = async (updatedData) => {
+        try {
+            await updateProfile(updatedData);
+            setProfile({ ...profile, ...updatedData });
+            updateUser(updatedData);
+            Alert.alert('Success', 'Profile updated successfully');
+        } catch (error) {
+            throw error;
+        }
+    };
+
     if (loading) {
         return <LoadingSpinner fullScreen message={t('loading')} />;
     }
@@ -124,13 +170,12 @@ export default function ProfileScreen() {
                 {/* Overlapping Profile Card */}
                 <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.profileCard}>
                     <View style={styles.avatarContainer}>
-                        {profile?.profilePicture ? (
-                            <Image source={{ uri: profile.profilePicture }} style={styles.avatarImage} />
-                        ) : (
-                            <View style={styles.avatarPlaceholder}>
-                                <Ionicons name="person" size={40} color={COLORS.textSecondary} />
-                            </View>
-                        )}
+                        <ProfileImagePicker
+                            imageUri={profile?.profilePicture}
+                            onImageSelected={handleImageSelected}
+                            size={100}
+                            editable={true}
+                        />
                         <TouchableOpacity
                             style={[styles.statusIndicator, profile?.availability === 'available' ? styles.statusOnline : styles.statusOffline]}
                             onPress={toggleAvailability}
@@ -150,6 +195,33 @@ export default function ProfileScreen() {
                         <Text style={[styles.availabilityText, { color: profile?.availability === 'available' ? '#1B5E20' : '#B71C1C' }]}>
                             {profile?.availability === 'available' ? t('available') : t('unavailable')}
                         </Text>
+                    </TouchableOpacity>
+
+                    {/* Quick Stats */}
+                    <View style={styles.statsRow}>
+                        <View style={styles.statBox}>
+                            <Text style={styles.statNumber}>{profile?.stats?.totalJobs || 0}</Text>
+                            <Text style={styles.statLabel}>Jobs</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statBox}>
+                            <Text style={styles.statNumber}>₹{profile?.stats?.totalEarnings || 0}</Text>
+                            <Text style={styles.statLabel}>Earned</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statBox}>
+                            <Text style={styles.statNumber}>{profile?.stats?.completionRate || 0}%</Text>
+                            <Text style={styles.statLabel}>Success</Text>
+                        </View>
+                    </View>
+
+                    {/* Edit Profile Button */}
+                    <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => setShowEditModal(true)}
+                    >
+                        <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                        <Text style={styles.editButtonText}>Edit Profile</Text>
                     </TouchableOpacity>
                 </Animated.View>
 
@@ -260,6 +332,14 @@ export default function ProfileScreen() {
                     />
                 </View>
             </ScrollView>
+
+            {/* Edit Profile Modal */}
+            <EditWorkerProfileModal
+                visible={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                profile={profile}
+                onSave={handleSaveProfile}
+            />
 
             {/* Language Selection Modal */}
             <Modal
@@ -388,6 +468,50 @@ const styles = StyleSheet.create({
     availabilityText: {
         fontSize: 14,
         fontWeight: '600',
+    },
+    statsRow: {
+        flexDirection: 'row',
+        width: '100%',
+        marginTop: 20,
+        paddingTop: 20,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+    },
+    statBox: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    statDivider: {
+        width: 1,
+        backgroundColor: COLORS.border,
+    },
+    statNumber: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.text,
+        marginBottom: 4,
+    },
+    statLabel: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    editButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        marginTop: 16,
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primaryLight + '10',
+    },
+    editButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.primary,
     },
     sectionContainer: {
         marginHorizontal: 20,

@@ -19,8 +19,11 @@ export const AuthProvider = ({ children }) => {
             const storedUser = await getUser();
 
             if (storedToken && storedUser) {
+                console.log('Auth Context: Loaded stored user:', storedUser._id);
                 setToken(storedToken);
                 setUser(storedUser);
+            } else {
+                console.log('Auth Context: No stored user or token found');
             }
         } catch (error) {
             console.error('Error loading stored auth:', error);

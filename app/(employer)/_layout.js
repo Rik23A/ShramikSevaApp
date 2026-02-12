@@ -1,12 +1,35 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { View, TouchableOpacity, Text } from 'react-native';
+import { Tabs, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/config';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function EmployerLayout() {
     const insets = useSafeAreaInsets();
+
+    const HeaderRight = () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
+            <TouchableOpacity
+                onPress={() => router.push('/(employer)/post-job')}
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 20,
+                    marginRight: 12
+                }}
+            >
+                <Ionicons name="add-circle" size={18} color={COLORS.white} />
+                <Text style={{ color: COLORS.white, fontSize: 13, fontWeight: 'bold', marginLeft: 4 }}>Post Job</Text>
+            </TouchableOpacity>
+            <NotificationBell iconColor={COLORS.white} />
+        </View>
+    );
 
     return (
         <>
@@ -29,6 +52,7 @@ export default function EmployerLayout() {
                     headerTitleStyle: {
                         fontWeight: '600',
                     },
+                    headerRight: () => <HeaderRight />,
                 }}
             >
                 <Tabs.Screen
@@ -44,10 +68,8 @@ export default function EmployerLayout() {
                 <Tabs.Screen
                     name="post-job"
                     options={{
+                        href: null, // Hide from tab bar
                         title: 'Post Job',
-                        tabBarIcon: ({ color, size }) => (
-                            <Ionicons name="add-circle" size={size} color={color} />
-                        ),
                         headerTitle: 'Post New Job',
                     }}
                 />
@@ -59,6 +81,16 @@ export default function EmployerLayout() {
                             <Ionicons name="briefcase" size={size} color={color} />
                         ),
                         headerTitle: 'My Jobs',
+                    }}
+                />
+                <Tabs.Screen
+                    name="messages"
+                    options={{
+                        title: 'Messages',
+                        tabBarIcon: ({ color, size }) => (
+                            <Ionicons name="chatbubbles" size={size} color={color} />
+                        ),
+                        headerTitle: 'Messages',
                     }}
                 />
                 <Tabs.Screen
@@ -82,6 +114,16 @@ export default function EmployerLayout() {
                     }}
                 />
                 <Tabs.Screen
+                    name="hired-jobs"
+                    options={{
+                        title: 'Hired',
+                        tabBarIcon: ({ color, size }) => (
+                            <Ionicons name="checkmark-done-circle" size={size} color={color} />
+                        ),
+                        headerTitle: 'Hired Workers',
+                    }}
+                />
+                <Tabs.Screen
                     name="profile"
                     options={{
                         title: 'Profile',
@@ -91,6 +133,13 @@ export default function EmployerLayout() {
                         headerTitle: 'Company Profile',
                     }}
                 />
+                <Tabs.Screen
+                    name="billing"
+                    options={{
+                        href: null,
+                    }}
+                />
+
             </Tabs>
         </>
     );

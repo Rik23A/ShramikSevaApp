@@ -29,3 +29,9 @@ export const deleteNotification = async (notificationId) => {
     const response = await API.delete(`/notifications/${notificationId}`);
     return response.data;
 };
+
+// Clear all read notifications
+export const clearAllReadNotifications = async () => {
+    const response = await API.delete('/notifications/clear-all');
+    return response.data;
+};

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { getFullImageUrl } from '../../utils/imageUtil';
 import {
     View,
     Text,
@@ -72,7 +73,7 @@ export default function WorkerDashboard() {
                     <TouchableOpacity onPress={() => router.push('/(worker)/profile')}>
                         <View style={styles.headerAvatar}>
                             {user?.profilePicture ? (
-                                <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />
+                                <Image source={{ uri: getFullImageUrl(user.profilePicture) }} style={styles.avatarImage} />
                             ) : (
                                 <Ionicons name="person" size={20} color={COLORS.primary} />
                             )}

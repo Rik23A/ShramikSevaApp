@@ -6,6 +6,12 @@ export const getConversations = async (userId) => {
     return response.data;
 };
 
+// Get a single conversation
+export const getConversationById = async (conversationId) => {
+    const response = await API.get(`/conversations/details/${conversationId}`);
+    return response.data;
+};
+
 // Create a new conversation
 export const createConversation = async (senderId, receiverId) => {
     const response = await API.post('/conversations', { senderId, receiverId });
@@ -21,5 +27,11 @@ export const getMessages = async (conversationId) => {
 // Send a message
 export const sendMessage = async (conversationId, sender, text) => {
     const response = await API.post('/messages', { conversationId, sender, text });
+    return response.data;
+};
+
+// Mark messages as read
+export const markMessagesAsRead = async (conversationId) => {
+    const response = await API.put(`/messages/${conversationId}/read`);
     return response.data;
 };

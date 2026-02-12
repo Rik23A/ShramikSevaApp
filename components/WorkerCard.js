@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/config';
 
+import { getFullImageUrl } from '../utils/imageUtil';
+
 const WorkerCard = ({ worker, onPress, onHire }) => {
     const renderStars = (rating) => {
         const stars = [];
@@ -26,7 +28,12 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
             <View style={styles.header}>
                 <View style={styles.avatar}>
                     {worker.profilePicture ? (
-                        <Image source={{ uri: worker.profilePicture }} style={styles.avatarImage} />
+                        <Image
+                            source={{ uri: getFullImageUrl(worker.profilePicture) }}
+                            style={styles.avatarImage}
+                            onLoad={() => console.log('WorkerCard Image Loaded:', getFullImageUrl(worker.profilePicture))}
+                            onError={(e) => console.error('WorkerCard Image Error:', e.nativeEvent.error, getFullImageUrl(worker.profilePicture))}
+                        />
                     ) : (
                         <Ionicons name="person" size={30} color={COLORS.textSecondary} />
                     )}
@@ -67,10 +74,12 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
                         {worker.isFresher ? 'Fresher' : `${worker.experience || 0} yrs exp`}
                     </Text>
                 </View>
-                {worker.location && (
+                {(worker.locationName || (typeof worker.location === 'string' && worker.location)) && (
                     <View style={styles.detailItem}>
                         <Ionicons name="location-outline" size={14} color={COLORS.textSecondary} />
-                        <Text style={styles.detailText} numberOfLines={1}>{worker.location}</Text>
+                        <Text style={styles.detailText} numberOfLines={1}>
+                            {worker.locationName || worker.location}
+                        </Text>
                     </View>
                 )}
             </View>

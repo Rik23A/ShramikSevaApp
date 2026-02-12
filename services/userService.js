@@ -53,3 +53,15 @@ export const getWorkerCompletedJobs = async (userId) => {
     const response = await API.get(`/users/${userId}/completed-jobs`);
     return response.data;
 };
+
+// Update user subscription
+export const updateSubscription = async (subscriptionData) => {
+    const response = await API.put('/users/subscription', subscriptionData);
+    return response.data;
+};
+
+// Unlock worker profile (requires active subscription)
+export const unlockWorkerProfile = async (workerId) => {
+    const response = await API.post(`/users/workers/${workerId}/unlock`);
+    return response.data;
+};

@@ -12,75 +12,49 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
-import { getSubscriptionPlans, purchaseSubscription, getCurrentSubscription } from '../../services/subscriptionService';
+import { getSubscriptionPlans, purchaseSubscription } from '../../services/subscriptionService';
+import { useSubscription } from '../../context/SubscriptionContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Button from '../../components/ui/Button';
 
 export default function SubscriptionPlansScreen() {
     const params = useLocalSearchParams();
-    const [activeTab, setActiveTab] = useState(params.tab || 'plans'); // 'myplan' or 'plans'
-    const [plans, setPlans] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const {
+        subscription: currentSubscription,
+        hasActiveSubscription,
+        loading: subLoading,
+        refreshSubscription,
+        plans,
+        selectedPlan,
+        setSelectedPlan,
+        plansLoading
+    } = useSubscription();
+
+    const [activeTab, setActiveTab] = useState(params.tab || 'plans'); // 'myplan' or 'plans')
     const [refreshing, setRefreshing] = useState(false);
     const [purchasing, setPurchasing] = useState(false);
-    const [selectedPlan, setSelectedPlan] = useState(null);
-    const [currentSubscription, setCurrentSubscription] = useState(null);
-    const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
-    const fadeAnim = useState(new Animated.Value(0))[0];
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    useEffect(() => {
-        if (!loading) {
-            Animated.timing(fadeAnim, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-            }).start();
-        }
-    }, [loading]);
-
-    // Set tab based on params (e.g., when redirected from post-job)
+    // Set tab based on params and subscription status
     useEffect(() => {
         if (params.tab) {
             setActiveTab(params.tab);
-        }
-    }, [params.tab]);
-
-    const fetchData = async () => {
-        try {
-            const [plansData, subData] = await Promise.all([
-                getSubscriptionPlans(),
-                getCurrentSubscription()
-            ]);
-            setPlans(plansData);
-            setCurrentSubscription(subData.subscription);
-            setHasActiveSubscription(subData.hasActiveSubscription);
-
-            // If no active subscription, default to plans tab
-            if (!subData.hasActiveSubscription && !params.tab) {
-                setActiveTab('plans');
-            } else if (subData.hasActiveSubscription && !params.tab) {
+        } else if (!plansLoading && !subLoading) {
+            if (hasActiveSubscription) {
                 setActiveTab('myplan');
+            } else {
+                setActiveTab('plans');
             }
-        } catch (error) {
-            console.error('Error fetching plans:', error);
-            Alert.alert('Error', 'Failed to load subscription data');
-        } finally {
-            setLoading(false);
         }
-    };
+    }, [params.tab, hasActiveSubscription, plansLoading, subLoading]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        await fetchData();
+        await refreshSubscription();
         setRefreshing(false);
-    }, []);
+    }, [refreshSubscription]);
 
     const handleSelectPlan = (plan) => {
-        setSelectedPlan(plan.id);
+        setSelectedPlan(plan.planKey);
     };
 
     const handlePurchase = async () => {
@@ -89,7 +63,7 @@ export default function SubscriptionPlansScreen() {
             return;
         }
 
-        const selectedPlanData = plans.find(p => p.id === selectedPlan);
+        const selectedPlanData = plans.find(p => p.planKey === selectedPlan);
 
         Alert.alert(
             'Confirm Purchase',
@@ -102,6 +76,7 @@ export default function SubscriptionPlansScreen() {
                         setPurchasing(true);
                         try {
                             const result = await purchaseSubscription(selectedPlan);
+                            await refreshSubscription();
                             Alert.alert(
                                 'Success! 🎉',
                                 result.message,
@@ -110,8 +85,6 @@ export default function SubscriptionPlansScreen() {
                                     onPress: () => router.replace('/(employer)/post-job')
                                 }]
                             );
-                            // Refresh data after purchase
-                            fetchData();
                             setActiveTab('myplan');
                         } catch (error) {
                             Alert.alert('Error', error.response?.data?.message || 'Failed to purchase subscription');
@@ -129,8 +102,9 @@ export default function SubscriptionPlansScreen() {
     };
 
     const getPlanIcon = (planId) => {
-        if (planId?.includes('12')) return 'diamond';
-        if (planId?.includes('3')) return 'star';
+        if (!planId) return 'flash';
+        if (planId === 'premium') return 'diamond';
+        if (planId === 'pro') return 'star';
         return 'flash';
     };
 
@@ -139,7 +113,7 @@ export default function SubscriptionPlansScreen() {
         return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
-    if (loading) {
+    if (subLoading || plansLoading) {
         return <LoadingSpinner fullScreen message="Loading subscription data..." />;
     }
 
@@ -180,229 +154,6 @@ export default function SubscriptionPlansScreen() {
         </View>
     );
 
-    // My Plan Tab Content
-    const MyPlanContent = () => {
-        if (!hasActiveSubscription) {
-            // No active subscription
-            return (
-                <View style={styles.noSubscriptionContainer}>
-                    <View style={styles.noSubIcon}>
-                        <Ionicons name="alert-circle-outline" size={80} color={COLORS.warning} />
-                    </View>
-                    <Text style={styles.noSubTitle}>No Active Subscription</Text>
-                    <Text style={styles.noSubText}>
-                        You need a subscription to post jobs and access candidate database.
-                    </Text>
-                    <Button
-                        title="Browse Plans"
-                        onPress={() => setActiveTab('plans')}
-                        style={styles.browseBtn}
-                        icon={<Ionicons name="arrow-forward" size={18} color={COLORS.white} />}
-                    />
-                </View>
-            );
-        }
-
-        // Check if subscription is expired or expiring soon
-        const isExpiringSoon = currentSubscription.daysRemaining <= 7;
-        const isExpired = currentSubscription.daysRemaining <= 0;
-
-        return (
-            <View style={styles.myPlanContainer}>
-                {/* Status Banner */}
-                {isExpired ? (
-                    <View style={[styles.statusBanner, styles.statusExpired]}>
-                        <Ionicons name="warning" size={24} color={COLORS.white} />
-                        <Text style={styles.statusBannerText}>Subscription Expired!</Text>
-                    </View>
-                ) : isExpiringSoon ? (
-                    <View style={[styles.statusBanner, styles.statusWarning]}>
-                        <Ionicons name="time" size={24} color={COLORS.white} />
-                        <Text style={styles.statusBannerText}>
-                            Expiring in {currentSubscription.daysRemaining} days!
-                        </Text>
-                    </View>
-                ) : (
-                    <View style={[styles.statusBanner, styles.statusActive]}>
-                        <Ionicons name="checkmark-circle" size={24} color={COLORS.white} />
-                        <Text style={styles.statusBannerText}>Active Subscription</Text>
-                    </View>
-                )}
-
-                {/* Plan Details Card */}
-                <View style={styles.planDetailsCard}>
-                    <View style={styles.planDetailsHeader}>
-                        <View style={styles.planTypeIcon}>
-                            <Ionicons
-                                name={getPlanIcon(currentSubscription.planType)}
-                                size={32}
-                                color={COLORS.secondary}
-                            />
-                        </View>
-                        <View style={styles.planTypeInfo}>
-                            <Text style={styles.planTypeName}>
-                                {currentSubscription.planType?.toUpperCase()} PLAN
-                            </Text>
-                            <Text style={styles.planTypeDate}>
-                                Expires: {formatDate(currentSubscription.endDate)}
-                            </Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.divider} />
-
-                    {/* Stats Grid */}
-                    <View style={styles.statsGrid}>
-                        <View style={styles.statItem}>
-                            <Ionicons name="time-outline" size={28} color={COLORS.secondary} />
-                            <Text style={styles.statValue}>{Math.max(0, currentSubscription.daysRemaining)}</Text>
-                            <Text style={styles.statLabel}>Days Left</Text>
-                        </View>
-                        <View style={styles.statItem}>
-                            <Ionicons name="briefcase-outline" size={28} color={COLORS.secondary} />
-                            <Text style={styles.statValue}>{currentSubscription.maxJobs}</Text>
-                            <Text style={styles.statLabel}>Job Slots</Text>
-                        </View>
-                        <View style={styles.statItem}>
-                            <Ionicons name="people-outline" size={28} color={COLORS.secondary} />
-                            <Text style={styles.statValue}>{currentSubscription.credits}</Text>
-                            <Text style={styles.statLabel}>DB Credits</Text>
-                        </View>
-                    </View>
-
-                    {/* Features */}
-                    {currentSubscription.features && currentSubscription.features.length > 0 && (
-                        <>
-                            <View style={styles.divider} />
-                            <Text style={styles.featuresTitle}>Plan Features</Text>
-                            {currentSubscription.features.map((feature, idx) => (
-                                <View key={idx} style={styles.featureRow}>
-                                    <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-                                    <Text style={styles.featureText}>{feature}</Text>
-                                </View>
-                            ))}
-                        </>
-                    )}
-                </View>
-
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                    {!isExpired && (
-                        <Button
-                            title="Post a Job"
-                            onPress={() => router.push('/(employer)/post-job')}
-                            style={styles.postJobBtn}
-                            icon={<Ionicons name="add-circle" size={20} color={COLORS.white} />}
-                        />
-                    )}
-                    <Button
-                        title={isExpired ? "Renew Subscription" : "Upgrade Plan"}
-                        onPress={() => setActiveTab('plans')}
-                        style={isExpired ? styles.renewBtn : styles.upgradeBtn}
-                        textStyle={isExpired ? {} : styles.upgradeBtnText}
-                        icon={<Ionicons name="arrow-up-circle" size={20} color={isExpired ? COLORS.white : COLORS.secondary} />}
-                    />
-                </View>
-            </View>
-        );
-    };
-
-    // Buy Plans Tab Content  
-    const PlansContent = () => (
-        <Animated.View style={{ opacity: fadeAnim }}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Choose Your Plan</Text>
-                <Text style={styles.headerSubtitle}>
-                    Get unlimited candidate responses and hire the best workers
-                </Text>
-            </View>
-
-            {/* Current subscription notice if upgrading */}
-            {hasActiveSubscription && (
-                <View style={styles.upgradeNotice}>
-                    <Ionicons name="information-circle" size={20} color={COLORS.primary} />
-                    <Text style={styles.upgradeNoticeText}>
-                        Your current plan expires in {currentSubscription?.daysRemaining} days.
-                        New plan will start after expiry.
-                    </Text>
-                </View>
-            )}
-
-            {/* Plans */}
-            {plans.map((plan) => (
-                <TouchableOpacity
-                    key={plan.id}
-                    style={[
-                        styles.planCard,
-                        selectedPlan === plan.id && styles.planCardSelected,
-                        plan.popular && styles.planCardPopular
-                    ]}
-                    onPress={() => handleSelectPlan(plan)}
-                    activeOpacity={0.8}
-                >
-                    {plan.popular && (
-                        <View style={styles.popularBadge}>
-                            <Text style={styles.popularText}>MOST POPULAR</Text>
-                        </View>
-                    )}
-
-                    <View style={styles.planHeader}>
-                        <View style={[styles.planIcon, plan.popular && styles.planIconPopular]}>
-                            <Ionicons
-                                name={getPlanIcon(plan.id)}
-                                size={28}
-                                color={plan.popular ? COLORS.white : COLORS.secondary}
-                            />
-                        </View>
-                        <View style={styles.planInfo}>
-                            <Text style={styles.planName}>{plan.name}</Text>
-                            <Text style={styles.planDuration}>{plan.duration} days</Text>
-                        </View>
-                        <View style={styles.planPriceContainer}>
-                            <Text style={styles.planPrice}>{formatPrice(plan.price)}</Text>
-                            {plan.id.includes('3') && (
-                                <Text style={styles.planSaving}>Save 40%</Text>
-                            )}
-                            {plan.id.includes('12') && (
-                                <Text style={styles.planSaving}>Save 73%</Text>
-                            )}
-                        </View>
-                    </View>
-
-                    <View style={styles.planFeatures}>
-                        {plan.features?.map((feature, idx) => (
-                            <View key={idx} style={styles.featureRow}>
-                                <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-                                <Text style={styles.featureText}>{feature}</Text>
-                            </View>
-                        ))}
-                    </View>
-
-                    {selectedPlan === plan.id && (
-                        <View style={styles.selectedIndicator}>
-                            <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
-                        </View>
-                    )}
-                </TouchableOpacity>
-            ))}
-
-            {/* Purchase Button */}
-            <Button
-                title={purchasing ? 'Processing...' : `Purchase${selectedPlan ? '' : ' (Select a Plan)'}`}
-                onPress={handlePurchase}
-                loading={purchasing}
-                disabled={!selectedPlan || purchasing}
-                style={[styles.purchaseButton, !selectedPlan && styles.purchaseButtonDisabled]}
-            />
-
-            {/* Note */}
-            <Text style={styles.noteText}>
-                💡 Payment integration coming soon. For demo, subscription will be activated immediately.
-            </Text>
-        </Animated.View>
-    );
-
     return (
         <View style={styles.container}>
             <TabHeader />
@@ -412,7 +163,232 @@ export default function SubscriptionPlansScreen() {
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.secondary]} />
                 }
             >
-                {activeTab === 'myplan' ? <MyPlanContent /> : <PlansContent />}
+                {activeTab === 'myplan' ? (
+                    <View style={styles.myPlanContainer}>
+                        {!hasActiveSubscription ? (
+                            <View style={styles.noSubscriptionContainer}>
+                                <View style={styles.noSubIcon}>
+                                    <Ionicons name="alert-circle-outline" size={80} color={COLORS.warning} />
+                                </View>
+                                <Text style={styles.noSubTitle}>No Active Subscription</Text>
+                                <Text style={styles.noSubText}>
+                                    You need a subscription to post jobs and access candidate database.
+                                </Text>
+                                <Button
+                                    title="Browse Plans"
+                                    onPress={() => setActiveTab('plans')}
+                                    style={styles.browseBtn}
+                                    icon={<Ionicons name="arrow-forward" size={18} color={COLORS.white} />}
+                                />
+                            </View>
+                        ) : (
+                            <>
+                                {/* Status Banner */}
+                                {currentSubscription?.daysRemaining <= 0 ? (
+                                    <View style={[styles.statusBanner, styles.statusExpired]}>
+                                        <Ionicons name="warning" size={24} color={COLORS.white} />
+                                        <Text style={styles.statusBannerText}>Subscription Expired!</Text>
+                                    </View>
+                                ) : currentSubscription?.daysRemaining <= 7 ? (
+                                    <View style={[styles.statusBanner, styles.statusWarning]}>
+                                        <Ionicons name="time" size={24} color={COLORS.white} />
+                                        <Text style={styles.statusBannerText}>
+                                            Expiring in {currentSubscription.daysRemaining} days!
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <View style={[styles.statusBanner, styles.statusActive]}>
+                                        <Ionicons name="checkmark-circle" size={24} color={COLORS.white} />
+                                        <Text style={styles.statusBannerText}>Active Subscription</Text>
+                                    </View>
+                                )}
+
+                                {/* Plan Details Card */}
+                                <View style={styles.planDetailsCard}>
+                                    <View style={styles.planDetailsHeader}>
+                                        <View style={styles.planTypeIcon}>
+                                            <Ionicons
+                                                name={getPlanIcon(currentSubscription?.planType)}
+                                                size={32}
+                                                color={COLORS.secondary}
+                                            />
+                                        </View>
+                                        <View style={styles.planTypeInfo}>
+                                            <Text style={styles.planTypeName}>
+                                                {currentSubscription?.planType?.toUpperCase()} PLAN
+                                            </Text>
+                                            <Text style={styles.planTypeDate}>
+                                                Expires: {formatDate(currentSubscription?.endDate)}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.divider} />
+
+                                    {/* Stats Grid */}
+                                    <View style={styles.statsGrid}>
+                                        <View style={styles.statItem}>
+                                            <Ionicons name="time-outline" size={28} color={COLORS.secondary} />
+                                            <Text style={styles.statValue}>{Math.max(0, currentSubscription?.daysRemaining || 0)}</Text>
+                                            <Text style={styles.statLabel}>Days Left</Text>
+                                        </View>
+                                        <View style={styles.statItem}>
+                                            <Ionicons name="briefcase-outline" size={28} color={COLORS.secondary} />
+                                            <Text style={styles.statValue}>{currentSubscription?.maxJobs || 0}</Text>
+                                            <Text style={styles.statLabel}>Job Slots</Text>
+                                        </View>
+                                        <View style={styles.statItem}>
+                                            <Ionicons name="people-outline" size={28} color={COLORS.secondary} />
+                                            <Text style={styles.statValue}>{currentSubscription?.credits || 0}</Text>
+                                            <Text style={styles.statLabel}>DB Credits</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Features */}
+                                    {currentSubscription?.features && currentSubscription.features.length > 0 && (
+                                        <>
+                                            <View style={styles.divider} />
+                                            <Text style={styles.featuresTitle}>Plan Features</Text>
+                                            {currentSubscription.features.map((feature, idx) => (
+                                                <View key={idx} style={styles.featureRow}>
+                                                    <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                                                    <Text style={styles.featureText}>{feature}</Text>
+                                                </View>
+                                            ))}
+                                        </>
+                                    )}
+                                </View>
+
+                                {/* Action Buttons */}
+                                <View style={styles.actionButtons}>
+                                    {currentSubscription?.daysRemaining > 0 && (
+                                        <Button
+                                            title="Post a Job"
+                                            onPress={() => router.push('/(employer)/post-job')}
+                                            style={styles.postJobBtn}
+                                            icon={<Ionicons name="add-circle" size={20} color={COLORS.white} />}
+                                        />
+                                    )}
+                                    <Button
+                                        title={currentSubscription?.daysRemaining <= 0 ? "Renew Subscription" : "Upgrade Plan"}
+                                        onPress={() => setActiveTab('plans')}
+                                        style={currentSubscription?.daysRemaining <= 0 ? styles.renewBtn : styles.upgradeBtn}
+                                        textStyle={currentSubscription?.daysRemaining <= 0 ? {} : styles.upgradeBtnText}
+                                        icon={<Ionicons name="arrow-up-circle" size={20} color={currentSubscription?.daysRemaining <= 0 ? COLORS.white : COLORS.secondary} />}
+                                    />
+                                </View>
+                            </>
+                        )}
+                    </View>
+                ) : (
+                    <View>
+                        {/* Header */}
+                        <View style={styles.header}>
+                            <Text style={styles.headerTitle}>Choose Your Plan</Text>
+                            <Text style={styles.headerSubtitle}>
+                                Get unlimited candidate responses and hire the best workers
+                            </Text>
+                        </View>
+
+                        {/* Current subscription notice if upgrading */}
+                        {hasActiveSubscription && (
+                            <View style={styles.upgradeNotice}>
+                                <Ionicons name="information-circle" size={20} color={COLORS.primary} />
+                                <Text style={styles.upgradeNoticeText}>
+                                    Your current plan expires in {currentSubscription?.daysRemaining} days.
+                                    New plan will start after expiry.
+                                </Text>
+                            </View>
+                        )}
+
+                        {/* Plans List */}
+                        {plans.length > 0 ? (
+                            plans.map((plan) => (
+                                <TouchableOpacity
+                                    key={plan.planKey}
+                                    style={[
+                                        styles.planCard,
+                                        selectedPlan === plan.planKey && styles.planCardSelected,
+                                        plan.popular && styles.planCardPopular,
+                                        currentSubscription?.planType === plan.planKey && styles.planCardActive
+                                    ]}
+                                    onPress={() => handleSelectPlan(plan)}
+                                    activeOpacity={0.8}
+                                >
+                                    {plan.popular && (
+                                        <View style={styles.popularBadge}>
+                                            <Text style={styles.popularText}>MOST POPULAR</Text>
+                                        </View>
+                                    )}
+
+                                    {currentSubscription?.planType === plan.planKey && (
+                                        <View style={styles.activeBadge}>
+                                            <Text style={styles.activeBadgeText}>CURRENT PLAN</Text>
+                                        </View>
+                                    )}
+
+                                    <View style={styles.planHeader}>
+                                        <View style={[styles.planIcon, plan.popular && styles.planIconPopular]}>
+                                            <Ionicons
+                                                name={getPlanIcon(plan.planKey)}
+                                                size={28}
+                                                color={plan.popular ? COLORS.white : COLORS.secondary}
+                                            />
+                                        </View>
+                                        <View style={styles.planInfo}>
+                                            <Text style={styles.planName}>{plan.name}</Text>
+                                            <Text style={styles.planDuration}>{plan.duration} days</Text>
+                                        </View>
+                                        <View style={styles.planPriceContainer}>
+                                            <Text style={styles.planPrice}>{formatPrice(plan.price)}</Text>
+                                            {(plan.planKey === 'pro') && (
+                                                <Text style={styles.planSaving}>Save 40%</Text>
+                                            )}
+                                            {(plan.planKey === 'premium') && (
+                                                <Text style={styles.planSaving}>Save 73%</Text>
+                                            )}
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.planFeatures}>
+                                        {plan.features?.map((feature, idx) => (
+                                            <View key={idx} style={styles.featureRow}>
+                                                <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                                                <Text style={styles.featureText}>{feature}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+
+                                    {selectedPlan === plan.planKey && (
+                                        <View style={styles.selectedIndicator}>
+                                            <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            ))
+                        ) : (
+                            <View style={styles.noPlansContainer}>
+                                <Text style={styles.noPlansText}>No plans available at the moment.</Text>
+                            </View>
+                        )}
+
+                        {/* Purchase Button */}
+                        {plans.length > 0 && (
+                            <Button
+                                title={purchasing ? 'Processing...' : `Purchase${selectedPlan ? '' : ' (Select a Plan)'}`}
+                                onPress={handlePurchase}
+                                loading={purchasing}
+                                disabled={!selectedPlan || purchasing}
+                                style={[styles.purchaseButton, !selectedPlan && styles.purchaseButtonDisabled]}
+                            />
+                        )}
+
+                        {/* Note */}
+                        <Text style={styles.noteText}>
+                            💡 Payment integration coming soon. For demo, subscription will be activated immediately.
+                        </Text>
+                    </View>
+                )}
             </ScrollView>
         </View>
     );
@@ -660,6 +636,19 @@ const styles = StyleSheet.create({
         borderColor: COLORS.secondary,
         borderWidth: 2,
     },
+    planCardActive: {
+        borderColor: COLORS.success,
+        borderWidth: 2,
+        backgroundColor: '#F1F8F1',
+    },
+    noPlansContainer: {
+        padding: 40,
+        alignItems: 'center',
+    },
+    noPlansText: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+    },
     popularBadge: {
         position: 'absolute',
         top: 0,
@@ -670,6 +659,20 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 12,
     },
     popularText: {
+        color: COLORS.white,
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    activeBadge: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        backgroundColor: COLORS.success,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderBottomRightRadius: 12,
+    },
+    activeBadgeText: {
         color: COLORS.white,
         fontSize: 10,
         fontWeight: '700',

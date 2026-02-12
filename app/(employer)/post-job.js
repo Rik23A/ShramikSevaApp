@@ -17,7 +17,7 @@ import Card from '../../components/ui/Card';
 import LocationPicker from '../../components/LocationPicker';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import AnimatedModal from '../../components/ui/AnimatedModal';
-import { COLORS, WORKER_TYPES, WORK_TYPES } from '../../constants/config';
+import { COLORS, WORKER_TYPES, WORK_TYPES, WORKER_SKILLS } from '../../constants/config';
 import { createJob } from '../../services/jobService';
 import { canPostJob } from '../../services/subscriptionService';
 
@@ -44,9 +44,14 @@ export default function PostJobScreen() {
         workType: 'temporary',
         durationDays: '',
         totalOpenings: '1',
+        minExperience: '',
+        maxExperience: '',
+        otpVerificationRequired: false,
+        geoTaggingRequired: false,
     });
     const [errors, setErrors] = useState({});
     const [showWorkerTypes, setShowWorkerTypes] = useState(false);
+    const [showSkillsDropdown, setShowSkillsDropdown] = useState(false);
 
     // Check subscription status on mount
     useEffect(() => {
@@ -122,6 +127,12 @@ export default function PostJobScreen() {
         }
         if (formData.workerType.length === 0) newErrors.workerType = 'Select at least one worker type';
 
+        if (formData.minExperience && isNaN(formData.minExperience)) newErrors.minExperience = 'Must be a number';
+        if (formData.maxExperience && isNaN(formData.maxExperience)) newErrors.maxExperience = 'Must be a number';
+        if (formData.minExperience && formData.maxExperience && Number(formData.minExperience) > Number(formData.maxExperience)) {
+            newErrors.minExperience = 'Min > Max';
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -148,6 +159,10 @@ export default function PostJobScreen() {
                 },
                 workType: formData.workType,
                 totalOpenings: Number(formData.totalOpenings) || 1,
+                minExperience: formData.minExperience ? Number(formData.minExperience) : undefined,
+                maxExperience: formData.maxExperience ? Number(formData.maxExperience) : undefined,
+                otpVerificationRequired: formData.otpVerificationRequired,
+                geoTaggingRequired: formData.geoTaggingRequired,
             };
 
             if (formData.workType === 'temporary') {
@@ -175,6 +190,33 @@ export default function PostJobScreen() {
         }
         setFormData({ ...formData, workerType: types });
         setErrors({ ...errors, workerType: '' });
+    };
+
+    const toggleSkill = (skill) => {
+        const currentSkills = formData.skills ? formData.skills.split(', ').filter(Boolean) : [];
+        const index = currentSkills.indexOf(skill);
+
+        let newSkills;
+        if (index > -1) {
+            newSkills = currentSkills.filter(s => s !== skill);
+        } else {
+            newSkills = [...currentSkills, skill];
+        }
+
+        setFormData({ ...formData, skills: newSkills.join(', ') });
+    };
+
+    const getSuggestedSkills = () => {
+        if (!formData.workerType || formData.workerType.length === 0) return [];
+
+        let suggestions = [];
+        formData.workerType.forEach(type => {
+            if (WORKER_SKILLS[type]) {
+                suggestions = [...suggestions, ...WORKER_SKILLS[type]];
+            }
+        });
+
+        return [...new Set(suggestions)];
     };
 
     // Show loading while checking subscription
@@ -324,12 +366,55 @@ export default function PostJobScreen() {
                         )}
                     </View>
 
-                    <Input
-                        label="Required Skills (comma separated)"
-                        placeholder="e.g., Wiring, Repair, Installation"
-                        value={formData.skills}
-                        onChangeText={(text) => setFormData({ ...formData, skills: text })}
-                    />
+                    {/* Skills Selection (Dropdown) */}
+                    <View style={styles.fieldContainer}>
+                        <Text style={styles.label}>Required Skills</Text>
+                        <TouchableOpacity
+                            style={styles.dropdown}
+                            onPress={() => {
+                                if (formData.workerType.length === 0) {
+                                    Alert.alert('Select Worker Type', 'Please select a worker type first to see relevant skills.');
+                                    return;
+                                }
+                                setShowSkillsDropdown(!showSkillsDropdown);
+                            }}
+                        >
+                            <Text style={formData.skills.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
+                                {formData.skills.length > 0
+                                    ? formData.skills
+                                    : 'Select required skills'}
+                            </Text>
+                            <Ionicons name={showSkillsDropdown ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+
+                        {showSkillsDropdown && (
+                            <View style={styles.typesList}>
+                                {getSuggestedSkills().length > 0 ? (
+                                    getSuggestedSkills().map((skill, index) => {
+                                        const isSelected = formData.skills.split(', ').includes(skill);
+                                        return (
+                                            <TouchableOpacity
+                                                key={index}
+                                                style={[styles.typeItem, isSelected && styles.typeItemSelected]}
+                                                onPress={() => toggleSkill(skill)}
+                                            >
+                                                <Text style={[styles.typeText, isSelected && styles.typeTextSelected]}>
+                                                    {skill}
+                                                </Text>
+                                                {isSelected && (
+                                                    <Ionicons name="checkmark" size={18} color={COLORS.white} />
+                                                )}
+                                            </TouchableOpacity>
+                                        );
+                                    })
+                                ) : (
+                                    <View style={styles.noSkillsContainer}>
+                                        <Text style={styles.noSkillsText}>No specific skills found for selected worker types.</Text>
+                                    </View>
+                                )}
+                            </View>
+                        )}
+                    </View>
 
                     <Input
                         label="Daily Salary (₹)"
@@ -391,6 +476,53 @@ export default function PostJobScreen() {
                         onChangeText={(text) => setFormData({ ...formData, totalOpenings: text.replace(/[^0-9]/g, '') })}
                         keyboardType="numeric"
                     />
+
+                    {/* Experience Range */}
+                    <View style={styles.rowContainer}>
+                        <View style={styles.halfWidth}>
+                            <Input
+                                label="Min Experience (Yrs)"
+                                placeholder="0"
+                                value={formData.minExperience}
+                                onChangeText={(text) => setFormData({ ...formData, minExperience: text.replace(/[^0-9]/g, '') })}
+                                keyboardType="numeric"
+                                error={errors.minExperience}
+                            />
+                        </View>
+                        <View style={styles.halfWidth}>
+                            <Input
+                                label="Max Experience (Yrs)"
+                                placeholder="5"
+                                value={formData.maxExperience}
+                                onChangeText={(text) => setFormData({ ...formData, maxExperience: text.replace(/[^0-9]/g, '') })}
+                                keyboardType="numeric"
+                                error={errors.maxExperience}
+                            />
+                        </View>
+                    </View>
+
+                    {/* Verification & Geo-tagging Options */}
+                    <View style={styles.checkboxContainer}>
+                        <TouchableOpacity
+                            style={styles.checkboxRow}
+                            onPress={() => setFormData({ ...formData, otpVerificationRequired: !formData.otpVerificationRequired })}
+                        >
+                            <View style={[styles.checkbox, formData.otpVerificationRequired && styles.checkboxChecked]}>
+                                {formData.otpVerificationRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                            </View>
+                            <Text style={styles.checkboxLabel}>Require OTP Verification for Work Logs</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.checkboxRow}
+                            onPress={() => setFormData({ ...formData, geoTaggingRequired: !formData.geoTaggingRequired })}
+                        >
+                            <View style={[styles.checkbox, formData.geoTaggingRequired && styles.checkboxChecked]}>
+                                {formData.geoTaggingRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                            </View>
+                            <Text style={styles.checkboxLabel}>Require Geo-tagging for Work Logs</Text>
+                        </TouchableOpacity>
+                    </View>
                 </Card>
 
                 <Button
@@ -634,5 +766,60 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
         color: COLORS.secondary,
+    },
+    suggestionChip: {
+        backgroundColor: COLORS.backgroundDark,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    suggestionText: {
+        fontSize: 12,
+        color: COLORS.text,
+    },
+    noSkillsContainer: {
+        padding: 16,
+        alignItems: 'center',
+    },
+    noSkillsText: {
+        color: COLORS.textSecondary,
+        fontSize: 14,
+    },
+    rowContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+    halfWidth: {
+        width: '48%',
+    },
+    checkboxContainer: {
+        marginTop: 8,
+        marginBottom: 16,
+    },
+    checkboxRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    checkbox: {
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: COLORS.secondary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 10,
+        backgroundColor: COLORS.white,
+    },
+    checkboxChecked: {
+        backgroundColor: COLORS.secondary,
+    },
+    checkboxLabel: {
+        fontSize: 14,
+        color: COLORS.text,
     },
 });

@@ -37,6 +37,8 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useLanguage } from '../../context/LanguageContext';
+import StartWorkModal from '../../components/worklog/StartWorkModal';
+import EndWorkModal from '../../components/worklog/EndWorkModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TAB_WIDTH = SCREEN_WIDTH / 4;
@@ -109,7 +111,7 @@ const AnimatedTabBar = ({ activeTab, tabs, onTabPress, counts }) => {
 };
 
 // Job Card Component with animations
-const JobCard = ({ job, index, type, onStartWork, onViewDetails }) => {
+const JobCard = ({ job, index, type, workLogs, onStartWork, onEndWork, onViewDetails }) => {
     const { t } = useLanguage();
     const scaleValue = useSharedValue(1);
 
@@ -151,7 +153,31 @@ const JobCard = ({ job, index, type, onStartWork, onViewDetails }) => {
         }
     };
 
-    const workerStatus = job.workers?.find(w => w.workerId === job._id || w.status)?.status || 'pending';
+    // Get the actual work log status for this job
+    const getWorkLogStatus = () => {
+        // workLogs prop should be passed from parent
+        if (!workLogs || workLogs.length === 0) return 'pending';
+
+        // Find today's work log for this job
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const todayWorkLog = workLogs.find(log => {
+            const logDate = new Date(log.workDate);
+            logDate.setHours(0, 0, 0, 0);
+            return log.job === job._id && logDate.getTime() === today.getTime();
+        });
+
+        if (todayWorkLog) {
+            return todayWorkLog.status; // 'assigned', 'in-progress', or 'completed'
+        }
+
+        // If no work log for today, check if any work log exists for this job
+        const anyWorkLog = workLogs.find(log => log.job === job._id);
+        return anyWorkLog ? anyWorkLog.status : 'pending';
+    };
+
+    const workerStatus = getWorkLogStatus();
 
     return (
         <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
@@ -233,16 +259,34 @@ const JobCard = ({ job, index, type, onStartWork, onViewDetails }) => {
                         {/* Action Buttons */}
                         {type === 'assigned' && (
                             <View style={styles.actionRow}>
-                                <TouchableOpacity
-                                    style={styles.primaryButton}
-                                    onPress={() => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        onStartWork && onStartWork(job);
-                                    }}
-                                >
-                                    <Ionicons name="play-circle" size={18} color={COLORS.white} />
-                                    <Text style={styles.primaryButtonText}>{t('start_work')}</Text>
-                                </TouchableOpacity>
+                                {workerStatus === 'in-progress' ? (
+                                    <TouchableOpacity
+                                        style={[styles.primaryButton, { backgroundColor: COLORS.danger }]}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                            onEndWork && onEndWork(job);
+                                        }}
+                                    >
+                                        <Ionicons name="stop-circle" size={18} color={COLORS.white} />
+                                        <Text style={styles.primaryButtonText}>{t('end_work')}</Text>
+                                    </TouchableOpacity>
+                                ) : workerStatus === 'completed' ? (
+                                    <View style={[styles.primaryButton, { backgroundColor: COLORS.success, opacity: 0.7 }]}>
+                                        <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
+                                        <Text style={styles.primaryButtonText}>{t('completed')}</Text>
+                                    </View>
+                                ) : (
+                                    <TouchableOpacity
+                                        style={styles.primaryButton}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                            onStartWork && onStartWork(job);
+                                        }}
+                                    >
+                                        <Ionicons name="play-circle" size={18} color={COLORS.white} />
+                                        <Text style={styles.primaryButtonText}>{t('start_work')}</Text>
+                                    </TouchableOpacity>
+                                )}
                                 <TouchableOpacity
                                     style={styles.secondaryButton}
                                     onPress={onViewDetails}
@@ -495,6 +539,11 @@ export default function MyWorkScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Work log modal states
+    const [startWorkModalVisible, setStartWorkModalVisible] = useState(false);
+    const [endWorkModalVisible, setEndWorkModalVisible] = useState(false);
+    const [selectedJobId, setSelectedJobId] = useState(null);
+
     const fetchData = useCallback(async () => {
         try {
             const [assigned, requests, apps, completed, logs] = await Promise.all([
@@ -575,7 +624,15 @@ export default function MyWorkScreen() {
                             job={job}
                             index={index}
                             type="assigned"
-                            onStartWork={(job) => router.push('/job-details/' + job._id)}
+                            workLogs={workLogs}
+                            onStartWork={(job) => {
+                                setSelectedJobId(job._id);
+                                setStartWorkModalVisible(true);
+                            }}
+                            onEndWork={(job) => {
+                                setSelectedJobId(job._id);
+                                setEndWorkModalVisible(true);
+                            }}
                             onViewDetails={() => router.push('/job-details/' + job._id)}
                         />
                     ))
@@ -692,6 +749,31 @@ export default function MyWorkScreen() {
             >
                 {renderContent()}
             </ScrollView>
+
+            {/* Work Log Modals */}
+            <StartWorkModal
+                visible={startWorkModalVisible}
+                onClose={() => {
+                    setStartWorkModalVisible(false);
+                    setSelectedJobId(null);
+                }}
+                jobId={selectedJobId}
+                onSuccess={() => {
+                    fetchData(); // Refresh data after successful start
+                }}
+            />
+
+            <EndWorkModal
+                visible={endWorkModalVisible}
+                onClose={() => {
+                    setEndWorkModalVisible(false);
+                    setSelectedJobId(null);
+                }}
+                jobId={selectedJobId}
+                onSuccess={() => {
+                    fetchData(); // Refresh data after successful end
+                }}
+            />
         </View>
     );
 }

@@ -13,15 +13,20 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
-import { getProfile } from '../../services/userService';
+import { getProfile, updateProfile } from '../../services/userService';
+import { uploadFile } from '../../services/uploadService';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import EditEmployerProfileModal from '../../components/profile/EditEmployerProfileModal';
+import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
 
 export default function EmployerProfileScreen() {
-    const { user, logout } = useAuth();
+    const { user, logout, updateUser } = useAuth();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
         fetchProfile();
@@ -30,6 +35,7 @@ export default function EmployerProfileScreen() {
     const fetchProfile = async () => {
         try {
             const data = await getProfile();
+            console.log('Fetched Profile:', JSON.stringify(data, null, 2));
             setProfile(data);
         } catch (error) {
             console.error('Failed to fetch profile:', error);
@@ -64,12 +70,47 @@ export default function EmployerProfileScreen() {
 
     const getVerificationBadge = () => {
         const status = profile?.companyDetails?.verificationStatus || 'pending';
+        console.log('Verification Status:', status);
         const config = {
             pending: { icon: 'time-outline', color: COLORS.warning, text: 'Verification Pending' },
             verified: { icon: 'shield-checkmark', color: COLORS.success, text: 'Verified Company' },
             rejected: { icon: 'close-circle-outline', color: COLORS.danger, text: 'Verification Rejected' },
         };
         return config[status];
+    };
+
+    const handleImageSelected = async (imageAsset) => {
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', {
+                uri: imageAsset.uri,
+                type: 'image/jpeg',
+                name: 'company-logo.jpg',
+            });
+
+            const uploadResult = await uploadFile(formData);
+            await updateProfile({ profilePicture: uploadResult.fileUrl });
+
+            setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
+            updateUser({ profilePicture: uploadResult.fileUrl });
+        } catch (error) {
+            console.error('Failed to upload image:', error);
+            Alert.alert('Error', 'Failed to upload company logo');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleSaveProfile = async (updatedData) => {
+        try {
+            await updateProfile(updatedData);
+            setProfile({ ...profile, ...updatedData });
+            updateUser(updatedData);
+            Alert.alert('Success', 'Profile updated successfully');
+        } catch (error) {
+            throw error;
+        }
     };
 
     if (loading) {
@@ -105,9 +146,12 @@ export default function EmployerProfileScreen() {
                 {/* Overlapping Company Card */}
                 <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.profileCard}>
                     <View style={styles.companyIconContainer}>
-                        <View style={styles.companyIcon}>
-                            <Ionicons name="business" size={40} color={COLORS.primary} />
-                        </View>
+                        <ProfileImagePicker
+                            imageUri={profile?.profilePicture}
+                            onImageSelected={handleImageSelected}
+                            size={80}
+                            editable={true}
+                        />
                         {badge && (
                             <View style={[styles.verificationBadge, { backgroundColor: badge.color }]}>
                                 <Ionicons name={badge.icon} size={12} color={COLORS.white} />
@@ -139,7 +183,56 @@ export default function EmployerProfileScreen() {
                             <Text style={styles.statLabel}>Rating</Text>
                         </View>
                     </View>
+
+                    {/* Edit Profile Button */}
+                    <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => setShowEditModal(true)}
+                    >
+                        <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                        <Text style={styles.editButtonText}>Edit Profile</Text>
+                    </TouchableOpacity>
                 </Animated.View>
+
+                {/* Subscription Status Card */}
+                {profile?.subscription && (
+                    <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.subscriptionCard}>
+                        <View style={styles.subscriptionHeader}>
+                            <View style={styles.subscriptionIconContainer}>
+                                <Ionicons name="diamond" size={20} color={COLORS.primary} />
+                            </View>
+                            <View style={styles.subscriptionInfo}>
+                                <Text style={styles.subscriptionPlan}>{profile.subscription.plan || 'Free'} Plan</Text>
+                                <Text style={styles.subscriptionStatus}>
+                                    {profile.subscription.status === 'active' ? 'Active' : 'Inactive'}
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.upgradeButton}
+                                onPress={() => router.push('/(employer)/subscription-plans')}
+                            >
+                                <Text style={styles.upgradeButtonText}>Manage</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={styles.subscriptionLimits}>
+                            <View style={styles.limitItem}>
+                                <Text style={styles.limitLabel}>Jobs Posted</Text>
+                                <Text style={styles.limitValue}>
+                                    {profile.subscription.jobsPosted || 0}/{profile.subscription.jobLimit || '∞'}
+                                </Text>
+                            </View>
+                            <View style={styles.limitItem}>
+                                <Text style={styles.limitLabel}>Valid Until</Text>
+                                <Text style={styles.limitValue}>
+                                    {profile.subscription.expiryDate
+                                        ? new Date(profile.subscription.expiryDate).toLocaleDateString()
+                                        : 'N/A'
+                                    }
+                                </Text>
+                            </View>
+                        </View>
+                    </Animated.View>
+                )}
 
                 {/* Profile Completion Prompt */}
                 {!companyDetails.isProfileComplete && (
@@ -272,6 +365,19 @@ export default function EmployerProfileScreen() {
                     <View style={styles.menuCard}>
                         <TouchableOpacity
                             style={styles.menuItem}
+                            onPress={() => router.push('/(employer)/billing')}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: '#F3E5F5' }]}>
+                                <Ionicons name="receipt-outline" size={20} color="#9C27B0" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuValue}>Invoices & Billing</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
                             onPress={() => Alert.alert('Coming Soon', 'Edit profile feature coming soon!')}
                         >
                             <View style={[styles.menuIcon, { backgroundColor: '#F5F5F5' }]}>
@@ -299,6 +405,14 @@ export default function EmployerProfileScreen() {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
+
+            {/* Edit Profile Modal */}
+            <EditEmployerProfileModal
+                visible={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                profile={profile}
+                onSave={handleSaveProfile}
+            />
         </View>
     );
 }
@@ -502,5 +616,93 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: COLORS.primary,
+    },
+    editButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        marginTop: 16,
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primaryLight + '10',
+    },
+    editButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.primary,
+    },
+    subscriptionCard: {
+        backgroundColor: COLORS.white,
+        marginHorizontal: 20,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 24,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+    },
+    subscriptionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    subscriptionIconContainer: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: COLORS.primaryLight + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    subscriptionInfo: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    subscriptionPlan: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.text,
+    },
+    subscriptionStatus: {
+        fontSize: 13,
+        color: COLORS.success,
+        marginTop: 2,
+    },
+    upgradeButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 16,
+        backgroundColor: COLORS.primary,
+    },
+    upgradeButtonText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.white,
+    },
+    subscriptionLimits: {
+        flexDirection: 'row',
+        gap: 16,
+    },
+    limitItem: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+        padding: 12,
+        borderRadius: 12,
+    },
+    limitLabel: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        marginBottom: 4,
+    },
+    limitValue: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.text,
     },
 });

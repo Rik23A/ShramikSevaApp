@@ -15,14 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
-import { getPublicProfile } from '../../services/userService';
+import { getPublicProfile, unlockWorkerProfile } from '../../services/userService';
+import { getCurrentSubscription } from '../../services/subscriptionService';
 import { getHiredJobs } from '../../services/jobService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import { getFullImageUrl } from '../../utils/imageUtil';
 
 export default function WorkerDetailsScreen() {
     const { id } = useLocalSearchParams();
     const { user } = useAuth();
     const [worker, setWorker] = useState(null);
+    const [subscription, setSubscription] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isHired, setIsHired] = useState(false);
 
@@ -33,8 +36,13 @@ export default function WorkerDetailsScreen() {
     const fetchWorkerDetails = async () => {
         try {
             setLoading(true);
-            const data = await getPublicProfile(id);
-            setWorker(data);
+            const [profileData, subData] = await Promise.all([
+                getPublicProfile(id),
+                getCurrentSubscription()
+            ]);
+
+            setWorker(profileData);
+            setSubscription(subData);
 
             // Check if already hired by this employer
             if (user?.role === 'employer') {
@@ -57,6 +65,50 @@ export default function WorkerDetailsScreen() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleUnlock = async () => {
+        const credits = subscription ? (subscription.maxDatabaseUnlocks - (subscription.databaseUnlocksUsed || 0)) : 0;
+
+        Alert.alert(
+            "Unlock Worker Profile",
+            `This will use 1 database unlock credit. You have ${credits} credits remaining. Do you want to proceed?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Unlock",
+                    onPress: async () => {
+                        try {
+                            setLoading(true);
+                            const response = await unlockWorkerProfile(id);
+                            if (response.worker) {
+                                setWorker(response.worker);
+                                // Refresh subscription data locally
+                                const newSub = await getCurrentSubscription();
+                                setSubscription(newSub);
+                                Alert.alert("Success", "Worker profile unlocked!");
+                            }
+                        } catch (error) {
+                            console.error("Unlock error:", error);
+                            if (error.response && error.response.status === 403) {
+                                Alert.alert(
+                                    "Limit Reached",
+                                    error.response.data.message || "You have reached your database unlock limit.",
+                                    [
+                                        { text: "Cancel", style: "cancel" },
+                                        { text: "Upgrade Plan", onPress: () => router.push('/(employer)/subscription-plans') }
+                                    ]
+                                );
+                            } else {
+                                Alert.alert("Error", "Failed to unlock profile. Please try again.");
+                            }
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleCall = (mobile) => {
@@ -132,7 +184,12 @@ export default function WorkerDetailsScreen() {
                 <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.profileCard}>
                     <View style={styles.avatarContainer}>
                         {worker.profilePicture ? (
-                            <Image source={{ uri: worker.profilePicture }} style={styles.avatarImage} />
+                            <Image
+                                source={{ uri: getFullImageUrl(worker.profilePicture) }}
+                                style={styles.avatarImage}
+                                onLoad={() => console.log('Image Loaded Success:', getFullImageUrl(worker.profilePicture))}
+                                onError={(e) => console.error('Image Load Error:', e.nativeEvent.error, getFullImageUrl(worker.profilePicture))}
+                            />
                         ) : (
                             <View style={styles.avatarPlaceholder}>
                                 <Ionicons name="person" size={40} color={COLORS.primary} />
@@ -158,7 +215,7 @@ export default function WorkerDetailsScreen() {
                     )}
 
                     {/* Contact Actions Row */}
-                    {worker.mobile && (
+                    {worker.mobile ? (
                         <View style={styles.contactRow}>
                             <TouchableOpacity
                                 style={[styles.contactBtn, styles.whatsappBtn]}
@@ -175,7 +232,15 @@ export default function WorkerDetailsScreen() {
                                 <Text style={styles.contactBtnText}>Call</Text>
                             </TouchableOpacity>
                         </View>
-                    )}
+                    ) : user?.role === 'employer' ? (
+                        <TouchableOpacity
+                            style={styles.unlockBtn}
+                            onPress={handleUnlock}
+                        >
+                            <Ionicons name="lock-open" size={20} color={COLORS.white} />
+                            <Text style={styles.unlockBtnText}>Unlock Contact Details</Text>
+                        </TouchableOpacity>
+                    ) : null}
                 </Animated.View>
 
                 {/* Key Stats Grid */}
@@ -197,7 +262,7 @@ export default function WorkerDetailsScreen() {
                     <View style={styles.statItem}>
                         <Ionicons name="location-outline" size={22} color={COLORS.warning} />
                         <Text style={styles.statValue} numberOfLines={1}>
-                            {worker.location?.split(',')[0] || 'Any'}
+                            {worker.locationName?.split(',')[0] || (typeof worker.location === 'string' ? worker.location.split(',')[0] : 'Any')}
                         </Text>
                         <Text style={styles.statLabel}>Location</Text>
                     </View>
@@ -215,6 +280,29 @@ export default function WorkerDetailsScreen() {
                                 </View>
                             ))}
                         </View>
+                    </View>
+                )}
+
+                {/* Documents Section */}
+                {worker.documents && worker.documents.some(doc => doc.type === 'biodata') && (
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>Experience Documents (Bio-data)</Text>
+                        {worker.documents
+                            .filter(doc => doc.type === 'biodata')
+                            .map((doc, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={styles.documentItem}
+                                    onPress={() => Linking.openURL(getFullImageUrl(doc.url))}
+                                >
+                                    <Ionicons name="document-text-outline" size={24} color={COLORS.primary} />
+                                    <View style={styles.documentInfo}>
+                                        <Text style={styles.documentName}>{doc.name || 'CV / Resume'}</Text>
+                                        <Text style={styles.documentType}>Tap to view PDF</Text>
+                                    </View>
+                                    <Ionicons name="open-outline" size={20} color={COLORS.textSecondary} />
+                                </TouchableOpacity>
+                            ))}
                     </View>
                 )}
 
@@ -385,6 +473,21 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 14,
     },
+    unlockBtn: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.warning,
+        paddingVertical: 12,
+        borderRadius: 12,
+        gap: 8,
+    },
+    unlockBtnText: {
+        color: COLORS.white,
+        fontWeight: '700',
+        fontSize: 16,
+    },
 
     statsGrid: {
         flexDirection: 'row',
@@ -472,5 +575,34 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 16,
         fontWeight: '700',
+    },
+    documentItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        backgroundColor: COLORS.white,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        marginBottom: 10,
+    },
+    documentInfo: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    documentName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text,
+    },
+    documentType: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    noDataText: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        fontStyle: 'italic',
+        marginLeft: 4,
     },
 });

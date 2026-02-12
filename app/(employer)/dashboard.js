@@ -12,20 +12,79 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
-import { getEmployerDashboard } from '../../services/userService';
+import { useSocket } from '../../context/SocketContext';
+import { getEmployerDashboard, getEmployerAnalytics } from '../../services/userService';
+import { getHiredJobs } from '../../services/jobService';
+import { getWorkLogsByJob } from '../../services/worklogService';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 export default function EmployerDashboard() {
     const { user } = useAuth();
+    const { socket, connected } = useSocket();
     const [dashboardData, setDashboardData] = useState(null);
+    const [analyticsData, setAnalyticsData] = useState(null);
+    const [hiredJobs, setHiredJobs] = useState([]);
+    const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchDashboard = async () => {
         try {
-            const data = await getEmployerDashboard();
-            setDashboardData(data);
+            const [dashboard, analytics, hired] = await Promise.all([
+                getEmployerDashboard(),
+                getEmployerAnalytics(),
+                getHiredJobs()
+            ]);
+
+            setDashboardData(dashboard);
+            setAnalyticsData(analytics);
+            setHiredJobs(hired);
+
+            // Fetch recent activity (work logs) for hired jobs
+            if (hired && hired.length > 0) {
+                const activityPromises = hired.map(async (job) => {
+                    try {
+                        const logsResponse = await getWorkLogsByJob(job._id);
+                        const logs = Array.isArray(logsResponse) ? logsResponse : (logsResponse.workLogs || logsResponse.data || []);
+                        return { jobId: job._id, jobTitle: job.title, logs: logs };
+                    } catch (e) {
+                        return { jobId: job._id, logs: [] };
+                    }
+                });
+
+                const activities = await Promise.all(activityPromises);
+
+                // Process to find active workers (startOtp or endOtp today/recent)
+                const processedActivity = [];
+                activities.forEach(item => {
+                    if (item.logs && Array.isArray(item.logs)) {
+                        const today = new Date().toDateString();
+                        // Filter for logs with OTPs or verified status for TODAY only
+                        const activeLogs = item.logs.filter(l => {
+                            const isToday = new Date(l.workDate || l.createdAt).toDateString() === today;
+                            return isToday && (l.startOtp || l.endOtp || l.startOtpVerified || l.endOtpVerified);
+                        });
+                        activeLogs.forEach(log => {
+                            processedActivity.push({
+                                jobId: item.jobId,
+                                jobTitle: item.jobTitle,
+                                workerName: log.worker?.name,
+                                workerMobile: log.worker?.mobile,
+                                startOtp: log.startOtp,
+                                endOtp: log.endOtp,
+                                startOtpVerified: log.startOtpVerified,
+                                endOtpVerified: log.endOtpVerified,
+                                date: log.createdAt
+                            });
+                        });
+                    }
+                });
+
+                // Sort by date desc
+                processedActivity.sort((a, b) => new Date(b.date) - new Date(a.date));
+                setRecentActivity(processedActivity.slice(0, 5));
+            }
         } catch (error) {
             console.error('Failed to fetch dashboard:', error);
         } finally {
@@ -39,6 +98,22 @@ export default function EmployerDashboard() {
             fetchDashboard();
         }, [])
     );
+
+    // Add socket listener for real-time OTP updates
+    useEffect(() => {
+        if (socket && connected) {
+            console.log('🔌 Dashboard: Setting up workLogUpdated listener');
+            socket.on('workLogUpdated', (data) => {
+                console.log('⚡ Dashboard: Received workLogUpdated event:', data);
+                fetchDashboard();
+            });
+
+            return () => {
+                console.log('🔌 Dashboard: Cleaning up workLogUpdated listener');
+                socket.off('workLogUpdated');
+            };
+        }
+    }, [socket, connected]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -98,6 +173,72 @@ export default function EmployerDashboard() {
                 </TouchableOpacity>
             </Animated.View>
 
+            {/* Expanded Stats Grid */}
+            <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>Overview</Text>
+                <View style={styles.statsGrid}>
+                    <Card style={styles.miniStatCard}>
+                        <Text style={styles.miniStatLabel}>Open Apps</Text>
+                        <Text style={styles.miniStatValue}>{dashboardData?.openApplications || 0}</Text>
+                    </Card>
+                    <Card style={styles.miniStatCard}>
+                        <Text style={styles.miniStatLabel}>Closed Apps</Text>
+                        <Text style={styles.miniStatValue}>{analyticsData?.closedApplications || 0}</Text>
+                    </Card>
+                    <Card style={styles.miniStatCard}>
+                        <Text style={styles.miniStatLabel}>Hire Reqs</Text>
+                        <Text style={styles.miniStatValue}>{analyticsData?.hireRequests || 0}</Text>
+                    </Card>
+                    <Card style={styles.miniStatCard}>
+                        <Text style={styles.miniStatLabel}>Total Spent</Text>
+                        <Text style={[styles.miniStatValue, { color: COLORS.primary }]}>₹{analyticsData?.totalSpent || 0}</Text>
+                    </Card>
+                </View>
+            </View>
+
+            {/* Recent Activity (OTPs) */}
+            {recentActivity.length > 0 ? (
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionTitle}>Recent Activity (OTPs)</Text>
+                    {recentActivity.map((activity, index) => (
+                        <Card key={index} style={styles.activityCard}>
+                            <View style={styles.activityHeader}>
+                                <Text style={styles.activityJobTitle}>{activity.jobTitle}</Text>
+                                <Text style={styles.activityDate}>{new Date(activity.date).toLocaleDateString()}</Text>
+                            </View>
+                            <Text style={styles.activityWorkerName}>{activity.workerName} ({activity.workerMobile})</Text>
+
+                            <View style={styles.otpContainer}>
+                                {(activity.startOtp || activity.startOtpVerified) && (
+                                    <View style={[styles.otpBadge, { backgroundColor: '#E8F5E9', borderColor: '#C8E6C9' }]}>
+                                        <Text style={[styles.otpLabel, { color: '#2E7D32' }]}>Start OTP:</Text>
+                                        <Text style={[styles.otpValue, { color: '#2E7D32' }]}>
+                                            {activity.startOtp || 'Verified ✓'}
+                                        </Text>
+                                    </View>
+                                )}
+                                {(activity.endOtp || activity.endOtpVerified) && (
+                                    <View style={[styles.otpBadge, { backgroundColor: '#FFEBEE', borderColor: '#FFCDD2' }]}>
+                                        <Text style={[styles.otpLabel, { color: '#C62828' }]}>End OTP:</Text>
+                                        <Text style={[styles.otpValue, { color: '#C62828' }]}>
+                                            {activity.endOtp || 'Verified ✓'}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        </Card>
+                    ))}
+                </View>
+            ) : (
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionTitle}>Recent Activity (OTPs)</Text>
+                    <Card style={[styles.activityCard, { alignItems: 'center', paddingVertical: 30, borderLeftWidth: 0 }]}>
+                        <Ionicons name="notifications-outline" size={32} color={COLORS.textSecondary} style={{ opacity: 0.5 }} />
+                        <Text style={[styles.activityDate, { marginTop: 8 }]}>No recent work activity found.</Text>
+                    </Card>
+                </View>
+            )}
+
             {/* Quick Actions */}
             <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -134,10 +275,20 @@ export default function EmployerDashboard() {
 
                     <TouchableOpacity
                         style={styles.actionCard}
-                        onPress={() => router.push('/(employer)/profile')}
+                        onPress={() => router.push('/(employer)/hired-jobs')}
                     >
                         <View style={[styles.actionIcon, { backgroundColor: '#F3E5F5' }]}>
-                            <Ionicons name="settings" size={28} color="#9C27B0" />
+                            <Ionicons name="checkmark-done-circle" size={28} color="#9C27B0" />
+                        </View>
+                        <Text style={styles.actionText}>Hired Workers</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => router.push('/(employer)/profile')}
+                    >
+                        <View style={[styles.actionIcon, { backgroundColor: '#E0F2F1' }]}>
+                            <Ionicons name="settings" size={28} color="#009688" />
                         </View>
                         <Text style={styles.actionText}>Settings</Text>
                     </TouchableOpacity>
@@ -354,5 +505,74 @@ const styles = StyleSheet.create({
     applicantName: {
         fontSize: 14,
         color: COLORS.text,
+    },
+    statsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        gap: 10,
+    },
+    miniStatCard: {
+        width: '48%',
+        padding: 12,
+        marginBottom: 10,
+        backgroundColor: COLORS.card,
+        elevation: 2,
+    },
+    miniStatLabel: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        marginBottom: 4,
+    },
+    miniStatValue: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.text,
+    },
+    activityCard: {
+        padding: 16,
+        marginBottom: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: COLORS.primary,
+    },
+    activityHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    activityJobTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: COLORS.text,
+    },
+    activityDate: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    activityWorkerName: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        marginBottom: 12,
+    },
+    otpContainer: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    otpBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        gap: 6,
+    },
+    otpLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    otpValue: {
+        fontSize: 14,
+        fontWeight: 'bold',
     },
 });
