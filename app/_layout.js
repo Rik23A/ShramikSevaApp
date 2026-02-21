@@ -8,6 +8,7 @@ import { SocketProvider } from '../context/SocketContext';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { COLORS } from '../constants/config';
 
+import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from '../services/pushNotificationService';
 
 function RootLayoutNav() {
@@ -25,6 +26,20 @@ function RootLayoutNav() {
             }
         }
     }, [isAuthenticated, isLoading, user]);
+
+    useEffect(() => {
+        // Handle notification tap
+        const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+            const data = response.notification.request.content.data;
+            if (data && data.actionUrl) {
+                // Navigate to the action URL
+                // e.g., /job/[id]/applicants
+                router.push(data.actionUrl);
+            }
+        });
+
+        return () => subscription.remove();
+    }, []);
 
     if (isLoading) {
         return <LoadingSpinner fullScreen message="Loading..." />;

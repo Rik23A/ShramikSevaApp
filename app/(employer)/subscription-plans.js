@@ -65,36 +65,14 @@ export default function SubscriptionPlansScreen() {
 
         const selectedPlanData = plans.find(p => p.planKey === selectedPlan);
 
-        Alert.alert(
-            'Confirm Purchase',
-            `Purchase ${selectedPlanData?.name} for ₹${selectedPlanData?.price?.toLocaleString('en-IN')}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Purchase',
-                    onPress: async () => {
-                        setPurchasing(true);
-                        try {
-                            const result = await purchaseSubscription(selectedPlan);
-                            await refreshSubscription();
-                            Alert.alert(
-                                'Success! 🎉',
-                                result.message,
-                                [{
-                                    text: 'Post a Job',
-                                    onPress: () => router.replace('/(employer)/post-job')
-                                }]
-                            );
-                            setActiveTab('myplan');
-                        } catch (error) {
-                            Alert.alert('Error', error.response?.data?.message || 'Failed to purchase subscription');
-                        } finally {
-                            setPurchasing(false);
-                        }
-                    }
-                }
-            ]
-        );
+        router.push({
+            pathname: '/(employer)/payment',
+            params: {
+                planId: selectedPlan,
+                planName: selectedPlanData?.name || selectedPlan,
+                amount: selectedPlanData?.price || 0
+            }
+        });
     };
 
     const formatPrice = (price) => {
@@ -385,7 +363,7 @@ export default function SubscriptionPlansScreen() {
 
                         {/* Note */}
                         <Text style={styles.noteText}>
-                            💡 Payment integration coming soon. For demo, subscription will be activated immediately.
+                            🔒 Secure payment integration via Paytm.
                         </Text>
                     </View>
                 )}

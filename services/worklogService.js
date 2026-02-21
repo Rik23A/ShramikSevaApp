@@ -8,7 +8,9 @@ export const getWorkLogByJob = async (jobId) => {
         const response = await API.get(`/worklogs/job/${jobId}`);
         return response.data;
     } catch (error) {
-        console.error('Error fetching work log:', error);
+        if (error.response?.status !== 404) {
+            console.error('Error fetching work log:', error);
+        }
         throw error;
     }
 };

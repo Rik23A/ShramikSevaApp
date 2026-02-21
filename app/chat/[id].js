@@ -12,6 +12,7 @@ import {
     Image,
     Animated,
     StatusBar,
+    Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,9 +38,33 @@ export default function ChatScreen() {
     const [otherUser, setOtherUser] = useState(null);
     const [isTyping, setIsTyping] = useState(false);
     const [otherUserTyping, setOtherUserTyping] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
     const typingTimeoutRef = useRef(null);
     const fadeAnim = useRef(new Animated.Value(0)).current;
-    const { socket, connected, isUserOnline } = useSocket();
+    const { socket, connected, isUserOnline, updateOnlineStatus } = useSocket();
+
+    // Keyboard event listeners for Android
+    useEffect(() => {
+        if (Platform.OS === 'android') {
+            const keyboardDidShowListener = Keyboard.addListener(
+                'keyboardDidShow',
+                (e) => {
+                    setKeyboardHeight(e.endCoordinates.height);
+                }
+            );
+            const keyboardDidHideListener = Keyboard.addListener(
+                'keyboardDidHide',
+                () => {
+                    setKeyboardHeight(0);
+                }
+            );
+
+            return () => {
+                keyboardDidShowListener.remove();
+                keyboardDidHideListener.remove();
+            };
+        }
+    }, []);
 
     // Fetch conversation details for header
     useEffect(() => {
@@ -50,6 +75,20 @@ export default function ChatScreen() {
                     if (convo) {
                         const other = convo.members.find(m => m._id !== user._id);
                         setOtherUser(other);
+                        // Fetch initial online status
+                        if (socket && connected && other) {
+                            console.log('Fetching online status for:', other._id);
+                            socket.emit('users:getOnlineStatus', { userIds: [other._id] }, (status) => {
+                                console.log('Online status response:', status);
+                                if (status && status[other._id]) {
+                                    console.log('User is online, updating status');
+                                    updateOnlineStatus(other._id, true);
+                                } else {
+                                    console.log('User is offline');
+                                    updateOnlineStatus(other._id, false);
+                                }
+                            });
+                        }
                     }
                 } catch (error) {
                     console.error('Failed to fetch conversation details:', error);
@@ -57,7 +96,7 @@ export default function ChatScreen() {
             }
         };
         fetchConversationDetails();
-    }, [id, user]);
+    }, [id, user, socket, connected]);
 
     // Fetch messages
     const fetchMessages = async () => {
@@ -322,58 +361,62 @@ export default function ChatScreen() {
     }
 
     return (
-        <View style={styles.safeArea}>
+        <>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.whatsappGreen} />
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerStyle: {
-                        backgroundColor: COLORS.whatsappGreen,
-                    },
-                    headerTintColor: COLORS.white,
-                    headerShadowVisible: false,
-                    headerBackVisible: true,
-                    headerTitle: () => (
-                        <TouchableOpacity
-                            style={styles.headerUserInfo}
-                            onPress={() => otherUser && router.push(`/profile/${otherUser._id}`)}
-                            activeOpacity={0.7}
-                        >
-                            {otherUser?.profilePicture ? (
-                                <Image
-                                    source={{ uri: getFullImageUrl(otherUser.profilePicture) }}
-                                    style={styles.headerAvatar}
-                                />
-                            ) : (
-                                <View style={styles.headerAvatarPlaceholder}>
-                                    <Ionicons name="person" size={18} color={COLORS.white} />
-                                </View>
-                            )}
-                            <View style={styles.headerInfo}>
-                                <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
-                                    {otherUser?.name || 'Chat'}
-                                </Text>
-                                <View style={styles.headerStatus}>
-                                    <View style={[
-                                        styles.onlineIndicator,
-                                        isUserOnline(otherUser?._id) ? styles.online : styles.offline
-                                    ]} />
-                                    <Text style={styles.headerStatusText}>
-                                        {isUserOnline(otherUser?._id) ? 'Online' : 'Offline'}
+            <View style={styles.rootContainer}>
+
+
+                <Stack.Screen
+                    options={{
+                        headerShown: true,
+                        headerStyle: {
+                            backgroundColor: COLORS.whatsappGreen,
+                        },
+                        headerTintColor: COLORS.white,
+                        headerShadowVisible: false,
+                        headerBackVisible: true,
+                        headerTitleContainerStyle: {
+                            marginLeft: Platform.OS === 'ios' ? -16 : -20, // Adjust for both platforms
+                        },
+                        headerTitle: () => (
+                            <TouchableOpacity
+                                style={styles.headerUserInfo}
+                                onPress={() => otherUser && router.push(`/profile/${otherUser._id}`)}
+                                activeOpacity={0.7}
+                            >
+                                {otherUser?.profilePicture ? (
+                                    <Image
+                                        source={{ uri: getFullImageUrl(otherUser.profilePicture) }}
+                                        style={styles.headerAvatar}
+                                    />
+                                ) : (
+                                    <View style={styles.headerAvatarPlaceholder}>
+                                        <Ionicons name="person" size={20} color={COLORS.white} />
+                                    </View>
+                                )}
+                                <View style={styles.headerInfo}>
+                                    <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
+                                        {otherUser?.name || 'Chat'}
                                     </Text>
+                                    <View style={styles.headerStatus}>
+                                        <View style={[
+                                            styles.onlineIndicator,
+                                            isUserOnline(otherUser?._id) ? styles.online : styles.offline
+                                        ]} />
+                                        <Text style={styles.headerStatusText}>
+                                            {isUserOnline(otherUser?._id) ? 'Online' : 'Offline'}
+                                        </Text>
+                                    </View>
                                 </View>
-                            </View>
-                        </TouchableOpacity>
-                    ),
-                }}
-            />
-            <KeyboardAvoidingView
-                style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-            >
-                <View style={styles.chatContainer}>
-                    <Animated.View style={[styles.chatBackground, { opacity: fadeAnim }]}>
+                            </TouchableOpacity>
+                        ),
+                    }}
+                />
+
+                {/* Main content with keyboard handling */}
+                <View style={styles.container}>
+                    {/* Messages Area */}
+                    <Animated.View style={[styles.messagesContainer, { opacity: fadeAnim }]}>
                         <FlatList
                             ref={flatListRef}
                             data={messages}
@@ -417,7 +460,19 @@ export default function ChatScreen() {
                         )}
                     </Animated.View>
 
-                    <View style={[styles.inputContainer, { paddingBottom: insets.bottom > 0 ? insets.bottom : 8 }]}>
+                    {/* Input Area - Fixed at bottom */}
+                    <View
+                        style={[
+                            styles.inputContainer,
+                            {
+                                paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+                                // Add bottom padding for Android keyboard
+                                ...(Platform.OS === 'android' && keyboardHeight > 0
+                                    ? { marginBottom: keyboardHeight }
+                                    : {})
+                            }
+                        ]}
+                    >
                         <View style={styles.inputWrapper}>
                             <TextInput
                                 ref={inputRef}
@@ -449,28 +504,24 @@ export default function ChatScreen() {
                         </View>
                     </View>
                 </View>
-            </KeyboardAvoidingView>
-        </View>
+            </View>
+        </>
     );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
+    rootContainer: {
         flex: 1,
         backgroundColor: COLORS.whatsappGreen,
     },
     container: {
         flex: 1,
         backgroundColor: '#ECE5DD',
-    },
-    chatContainer: {
-        flex: 1,
         justifyContent: 'space-between',
     },
-    chatBackground: {
+    messagesContainer: {
         flex: 1,
         backgroundColor: '#ECE5DD',
-        position: 'relative',
     },
     loadingContainer: {
         flex: 1,
@@ -483,42 +534,39 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: COLORS.textSecondary,
     },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    backButton: {
-        paddingRight: 8,
-    },
+    // Update the headerUserInfo style in the StyleSheet:
+
     headerUserInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        width: '100%',
-        marginLeft: -20,
+        paddingLeft: Platform.OS === 'ios' ? -4 : -4, // Small padding for Android
+        marginLeft: 0,
     },
+
     headerAvatar: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        marginRight: 10,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        marginRight: 10, // Reduced from 12 to 10
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
     },
+
     headerAvatarPlaceholder: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         backgroundColor: 'rgba(255,255,255,0.3)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 10,
+        marginRight: 10, // Reduced from 12 to 10
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
     },
     headerInfo: {
         flex: 1,
         maxWidth: '100%',
+
     },
     headerName: {
         fontSize: 16,

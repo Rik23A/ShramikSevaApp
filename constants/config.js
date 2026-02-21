@@ -5,7 +5,8 @@
 // - Physical Device: http://YOUR_MACHINE_IP:5000/api
 // - Production: https://your-production-url.com/api
 
-export const API_URL = 'http://192.168.1.4:5000/api';
+// Use EXPO_PUBLIC_API_URL if available (for production builds), otherwise fallback to local development URLs
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.29:5000/api';
 
 // Worker Types & Skills Mapping (Synced with Web)
 export const WORKER_SKILLS = {
@@ -117,6 +118,25 @@ export const INDIAN_STATES = [
     'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
     'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
     'Jammu and Kashmir', 'Ladakh'
+];
+
+// Salary Ranges (matching web frontend)
+export const SALARY_RANGES = [
+    { key: 'any', label: 'Any', min: undefined, max: undefined },
+    { key: '0-10k', label: '₹0 - ₹10,000', min: 0, max: 10000 },
+    { key: '10k-20k', label: '₹10,000 - ₹20,000', min: 10000, max: 20000 },
+    { key: '20k-30k', label: '₹20,000 - ₹30,000', min: 20000, max: 30000 },
+    { key: '30k-50k', label: '₹30,000 - ₹50,000', min: 30000, max: 50000 },
+    { key: '50k+', label: '₹50,000+', min: 50000, max: undefined },
+];
+
+// Experience Ranges (matching web frontend)
+export const EXPERIENCE_RANGES = [
+    { key: 'any', label: 'Any', min: undefined, max: undefined },
+    { key: '0-2', label: '0-2 years', min: 0, max: 2 },
+    { key: '2-5', label: '2-5 years', min: 2, max: 5 },
+    { key: '5-10', label: '5-10 years', min: 5, max: 10 },
+    { key: '10+', label: '10+ years', min: 10, max: undefined },
 ];
 
 // App Colors - Blue Theme for Job Holders

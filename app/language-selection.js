@@ -28,6 +28,10 @@ const LANGUAGES = [
     { code: 'te', name: 'Telugu', native: 'తెలుగు' },
     { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
     { code: 'bn', name: 'Bengali', native: 'বাংলা' },
+    { code: 'ml', name: 'Malayalam', native: 'മലയാളം' },
+    { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+    { code: 'or', name: 'Odia', native: 'ଓଡ଼ିଆ' },
+    { code: 'as', name: 'Assamese', native: 'অসমীয়া' },
 ];
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
@@ -103,9 +107,11 @@ export default function LanguageSelectionScreen() {
                     )}
                     keyExtractor={item => item.code}
                     numColumns={2}
-                    contentContainerStyle={styles.listContent}
+                    style={{ flex: 1, width: '100%' }}
+                    contentContainerStyle={[styles.listContent, { paddingTop: 20 }]}
                     columnWrapperStyle={styles.columnWrapper}
                     showsVerticalScrollIndicator={false}
+                    ListFooterComponent={<View style={{ height: 120 }} />} // Extra space for footer
                 />
 
                 <Animated.View style={[
@@ -155,7 +161,6 @@ const LanguageItem = ({ item, index, isSelected, onSelect }) => {
                 { transform: [{ scale: itemScale }] }
             ]}
             onPress={() => onSelect(item.code)}
-            activeOpacity={0.9}
         >
             <View style={styles.languageInfo}>
                 <Text style={[

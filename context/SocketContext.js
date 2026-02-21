@@ -204,6 +204,18 @@ export const SocketProvider = ({ children }) => {
         return onlineUsers.has(userId);
     };
 
+    const updateOnlineStatus = (userId, isOnline) => {
+        setOnlineUsers(prev => {
+            const newSet = new Set(prev);
+            if (isOnline) {
+                newSet.add(userId);
+            } else {
+                newSet.delete(userId);
+            }
+            return newSet;
+        });
+    };
+
     const value = {
         socket,
         connected,
@@ -215,6 +227,7 @@ export const SocketProvider = ({ children }) => {
         markMessageAsRead,
         getOnlineStatus,
         isUserOnline,
+        updateOnlineStatus,
     };
 
     return (

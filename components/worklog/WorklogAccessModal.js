@@ -11,26 +11,21 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
 import AnimatedModal from '../ui/AnimatedModal';
-import { purchaseWorklogAddon } from '../../services/subscriptionService';
-
-const { width } = Dimensions.get('window');
+import { router } from 'expo-router';
 
 export default function WorklogAccessModal({ visible, onClose, onSuccess }) {
     const [loading, setLoading] = useState(false);
 
     const handleUnlock = async () => {
-        setLoading(true);
-        try {
-            // In a real app, this would trigger a payment gateway
-            await purchaseWorklogAddon({ type: 'worklog' });
-            Alert.alert('Success', 'Worklog access unlocked successfully!');
-            onSuccess();
-        } catch (error) {
-            console.error('Error unlocking worklogs:', error);
-            Alert.alert('Error', 'Failed to unlock worklogs. Please try again.');
-        } finally {
-            setLoading(false);
-        }
+        onClose(); // Close the modal before navigating
+        router.push({
+            pathname: '/(employer)/payment',
+            params: {
+                planId: 'worklog_access',
+                planName: 'Worklog Access Add-on',
+                amount: 2499
+            }
+        });
     };
 
     return (

@@ -18,6 +18,12 @@ export const requestOtp = async (mobile) => {
     return response.data;
 };
 
+// Login with email and password
+export const loginUser = async (email, password) => {
+    const response = await API.post('/users/login', { email, password });
+    return response.data;
+};
+
 // Verify OTP and login
 export const verifyOtp = async (mobile, otp) => {
     const response = await API.post('/auth/verify-otp', { mobile, otp });

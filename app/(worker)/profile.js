@@ -23,9 +23,11 @@ import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import EditWorkerProfileModal from '../../components/profile/EditWorkerProfileModal';
 import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
+import DocumentUploadSection from '../../components/profile/DocumentUploadSection';
+import LanguageSelectionModal from '../../components/profile/LanguageSelectionModal';
 
 export default function ProfileScreen() {
-    const { user, logout, updateUser } = useAuth();
+    const { user, logout, updateUser, refreshProfile } = useAuth();
     const { t, locale, changeLanguage } = useLanguage();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -41,6 +43,9 @@ export default function ProfileScreen() {
         try {
             const data = await getProfile();
             setProfile(data);
+
+            // Update AuthContext with fresh profile data (includes workerType and skills)
+            await updateUser(data);
         } catch (error) {
             console.error('Failed to fetch profile:', error);
         } finally {
@@ -85,16 +90,8 @@ export default function ProfileScreen() {
     const handleImageSelected = async (imageAsset) => {
         setUploading(true);
         try {
-            // Create form data for upload
-            const formData = new FormData();
-            formData.append('file', {
-                uri: imageAsset.uri,
-                type: 'image/jpeg',
-                name: 'profile.jpg',
-            });
-
-            // Upload image
-            const uploadResult = await uploadFile(formData, (progress) => {
+            // Upload image directly (uploadService handles FormData)
+            const uploadResult = await uploadFile(imageAsset, (progress) => {
                 console.log('Upload progress:', progress);
             });
 
@@ -183,9 +180,10 @@ export default function ProfileScreen() {
                     </View>
 
                     <Text style={styles.name}>{profile?.name || 'Worker'}</Text>
-                    <View style={styles.ratingRow}>
-                        {renderStars(profile?.rating || 0)}
-                        <Text style={styles.ratingText}>({profile?.rating?.toFixed(1) || '0.0'})</Text>
+
+                    <View style={styles.ratingBadge}>
+                        <Ionicons name="star" size={14} color="#FFD700" />
+                        <Text style={styles.ratingValue}>{profile?.rating?.toFixed(1) || '0.0'}</Text>
                     </View>
 
                     <TouchableOpacity
@@ -201,27 +199,36 @@ export default function ProfileScreen() {
                     <View style={styles.statsRow}>
                         <View style={styles.statBox}>
                             <Text style={styles.statNumber}>{profile?.stats?.totalJobs || 0}</Text>
-                            <Text style={styles.statLabel}>Jobs</Text>
+                            <Text style={styles.statLabel}>{t('nav_jobs')}</Text>
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statBox}>
                             <Text style={styles.statNumber}>₹{profile?.stats?.totalEarnings || 0}</Text>
-                            <Text style={styles.statLabel}>Earned</Text>
+                            <Text style={styles.statLabel}>{t('total_earned')}</Text>
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>{profile?.stats?.completionRate || 0}%</Text>
-                            <Text style={styles.statLabel}>Success</Text>
+                            <Text style={styles.statNumber}>
+                                {profile?.hourlyRate ? `₹${profile.hourlyRate}` : '₹0'}
+                            </Text>
+                            <Text style={styles.statLabel}>{t('hourly_rate') || t('work_rate')}</Text>
                         </View>
                     </View>
 
+                    {/* Bio Section */}
+                    {profile?.bio && (
+                        <View style={styles.sectionContainer}>
+                            <Text style={styles.sectionHeader}>{t('about_me')}</Text>
+                            <Text style={styles.bioText}>{profile.bio}</Text>
+                        </View>
+                    )}
                     {/* Edit Profile Button */}
                     <TouchableOpacity
                         style={styles.editButton}
                         onPress={() => setShowEditModal(true)}
                     >
                         <Ionicons name="create-outline" size={18} color={COLORS.primary} />
-                        <Text style={styles.editButtonText}>Edit Profile</Text>
+                        <Text style={styles.editButtonText}>{t('edit_profile')}</Text>
                     </TouchableOpacity>
                 </Animated.View>
 
@@ -262,7 +269,7 @@ export default function ProfileScreen() {
                                 <Ionicons name="call" size={20} color="#009688" />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuLabel}>Mobile</Text>
+                                <Text style={styles.menuLabel}>{t('mobile')}</Text>
                                 <Text style={styles.menuValue}>+91 {profile?.mobile}</Text>
                             </View>
                         </View>
@@ -272,22 +279,77 @@ export default function ProfileScreen() {
                                     <Ionicons name="mail" size={20} color="#F44336" />
                                 </View>
                                 <View style={styles.menuContent}>
-                                    <Text style={styles.menuLabel}>Email</Text>
+                                    <Text style={styles.menuLabel}>{t('email')}</Text>
                                     <Text style={styles.menuValue}>{profile.email}</Text>
                                 </View>
                             </View>
                         )}
-                        {profile?.location && (
+                        {profile?.locationName && (
                             <View style={[styles.menuItem, { borderBottomWidth: 0 }]}>
                                 <View style={[styles.menuIcon, { backgroundColor: '#EFEBE9' }]}>
                                     <Ionicons name="location" size={20} color="#795548" />
                                 </View>
                                 <View style={styles.menuContent}>
                                     <Text style={styles.menuLabel}>{t('location')}</Text>
-                                    <Text style={styles.menuValue}>{profile.location}</Text>
+                                    <Text style={styles.menuValue}>{profile.locationName}</Text>
                                 </View>
                             </View>
                         )}
+                    </View>
+                </View>
+
+                {/* Personal Info Section */}
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionHeader}>{t('personal_info')}</Text>
+                    <View style={styles.menuCard}>
+                        <View style={[styles.menuItem, { borderBottomWidth: 0 }]}>
+                            <View style={[styles.menuIcon, { backgroundColor: '#F3E5F5' }]}>
+                                <Ionicons name="person-outline" size={20} color="#9C27B0" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('gender')}</Text>
+                                <Text style={styles.menuValue}>
+                                    {profile?.gender ? t(profile.gender) : '-'}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionHeader}>{t('bank_details')}</Text>
+                    <View style={styles.menuCard}>
+                        <View style={styles.menuItem}>
+                            <View style={[styles.menuIcon, { backgroundColor: '#E8EAF6' }]}>
+                                <Ionicons name="card-outline" size={20} color="#3F51B5" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('bank_name')}</Text>
+                                <Text style={styles.menuValue}>{profile?.bankDetails?.bankName || '-'}</Text>
+                            </View>
+                        </View>
+                        <View style={styles.menuItem}>
+                            <View style={[styles.menuIcon, { backgroundColor: '#F1F8E9' }]}>
+                                <Ionicons name="wallet-outline" size={20} color="#689F38" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('account_number')}</Text>
+                                <Text style={styles.menuValue}>
+                                    {profile?.bankDetails?.accountNumber
+                                        ? `XXXX ${profile.bankDetails.accountNumber.slice(-4)}`
+                                        : '-'}
+                                </Text>
+                            </View>
+                        </View>
+                        <View style={[styles.menuItem, { borderBottomWidth: 0 }]}>
+                            <View style={[styles.menuIcon, { backgroundColor: '#FFF8E1' }]}>
+                                <Ionicons name="key-outline" size={20} color="#FFA000" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('ifsc_code')}</Text>
+                                <Text style={styles.menuValue}>{profile?.bankDetails?.ifscCode || '-'}</Text>
+                            </View>
+                        </View>
                     </View>
                 </View>
 
@@ -307,11 +369,14 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
+                {/* Document Upload Section */}
+                <DocumentUploadSection />
+
                 {/* Profile Completion Prompt */}
                 {!profile?.isProfileComplete && (
                     <TouchableOpacity
                         style={styles.alertCard}
-                        onPress={() => Alert.alert(t('coming_soon'), t('feature_soon'))}
+                        onPress={() => setShowEditModal(true)}
                     >
                         <View style={styles.alertContent}>
                             <Ionicons name="create" size={24} color={COLORS.warning} />
@@ -342,38 +407,14 @@ export default function ProfileScreen() {
             />
 
             {/* Language Selection Modal */}
-            <Modal
+            <LanguageSelectionModal
                 visible={showLangModal}
-                transparent={true}
-                animationType="slide"
-                onRequestClose={() => setShowLangModal(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>{t('change_language')}</Text>
-                            <TouchableOpacity onPress={() => setShowLangModal(false)}>
-                                <Ionicons name="close" size={24} color={COLORS.text} />
-                            </TouchableOpacity>
-                        </View>
-
-                        {LANGUAGES.map((lang) => (
-                            <TouchableOpacity
-                                key={lang.code}
-                                style={[styles.langOption, locale === lang.code && styles.selectedLang]}
-                                onPress={() => handleLanguageChange(lang.code)}
-                            >
-                                <Text style={styles.langIcon}>{lang.icon}</Text>
-                                <Text style={[styles.langLabel, locale === lang.code && styles.selectedLangText]}>{lang.label}</Text>
-                                {locale === lang.code && (
-                                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
-                                )}
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-            </Modal>
-        </View>
+                onClose={() => setShowLangModal(false)}
+                onSelect={handleLanguageChange}
+                currentLocale={locale}
+                t={t}
+            />
+        </View >
     );
 }
 
@@ -390,7 +431,7 @@ const styles = StyleSheet.create({
         height: 100,
         borderBottomLeftRadius: 30,
         borderBottomRightRadius: 30,
-        marginBottom: -50,
+        marginBottom: -95,
     },
     profileCard: {
         backgroundColor: COLORS.white,
@@ -403,7 +444,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 8,
-        marginBottom: 24,
+        marginBottom: 20,
     },
     avatarContainer: {
         position: 'relative',
@@ -444,15 +485,22 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         marginBottom: 4,
     },
-    ratingRow: {
+    ratingBadge: {
         flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: '#FFFDE7',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#FFF59D',
         marginBottom: 12,
     },
-    ratingText: {
+    ratingValue: {
         fontSize: 14,
-        color: COLORS.textSecondary,
-        marginLeft: 6,
+        fontWeight: '700',
+        color: COLORS.text,
+        marginLeft: 4,
     },
     availabilityBadge: {
         paddingHorizontal: 16,
@@ -523,6 +571,19 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         marginBottom: 12,
         marginLeft: 4,
+    },
+    bioText: {
+        fontSize: 15,
+        color: COLORS.text,
+        lineHeight: 22,
+        backgroundColor: COLORS.white,
+        padding: 16,
+        borderRadius: 16,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
     },
     menuCard: {
         backgroundColor: COLORS.white,

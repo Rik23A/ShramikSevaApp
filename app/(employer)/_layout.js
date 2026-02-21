@@ -139,6 +139,18 @@ export default function EmployerLayout() {
                         href: null,
                     }}
                 />
+                <Tabs.Screen
+                    name="payment"
+                    options={{
+                        href: null,
+                    }}
+                />
+                <Tabs.Screen
+                    name="payment-status"
+                    options={{
+                        href: null,
+                    }}
+                />
 
             </Tabs>
         </>

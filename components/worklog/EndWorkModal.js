@@ -54,6 +54,23 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                 onClose();
                 return;
             }
+
+            if (data.endPhoto) {
+                console.log('End photo already uploaded');
+                Alert.alert('Success', 'Work already ended for today.');
+                onClose();
+                return;
+            }
+
+            if (data.endOtpVerified) {
+                console.log('End OTP already verified');
+                setOtpVerified(true);
+                setCurrentStep(3);
+            } else if (data.endOtp) {
+                console.log('End OTP already generated');
+                setOtpRequested(true);
+                setCurrentStep(2);
+            }
         } catch (error) {
             Alert.alert('Error', 'Failed to load work information.');
             onClose();

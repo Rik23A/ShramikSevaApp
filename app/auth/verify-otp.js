@@ -3,10 +3,13 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../../components/ui/Button';
@@ -88,53 +91,64 @@ export default function VerifyOtpScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.content}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => router.back()}
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+            >
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
                 >
-                    <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-                </TouchableOpacity>
-
-                <View style={styles.header}>
-                    <View style={styles.iconContainer}>
-                        <Ionicons name="mail-open" size={50} color={COLORS.primary} />
-                    </View>
-                    <Text style={styles.title}>Verify OTP</Text>
-                    <Text style={styles.subtitle}>
-                        Enter the 6-digit code sent to{'\n'}
-                        <Text style={styles.mobileText}>+91 {mobile}</Text>
-                    </Text>
-                </View>
-
-                <View style={styles.otpContainer}>
-                    <OtpInput value={otp} onChange={setOtp} length={6} />
-                </View>
-
-                <View style={styles.resendContainer}>
-                    {canResend ? (
-                        <TouchableOpacity onPress={handleResendOtp}>
-                            <Text style={styles.resendButton}>Resend OTP</Text>
+                    <View style={styles.content}>
+                        <TouchableOpacity
+                            style={styles.backButton}
+                            onPress={() => router.back()}
+                        >
+                            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
                         </TouchableOpacity>
-                    ) : (
-                        <Text style={styles.resendTimer}>
-                            Resend OTP in <Text style={styles.timerText}>{resendTimer}s</Text>
+
+                        <View style={styles.header}>
+                            <View style={styles.iconContainer}>
+                                <Ionicons name="mail-open" size={50} color={COLORS.primary} />
+                            </View>
+                            <Text style={styles.title}>Verify OTP</Text>
+                            <Text style={styles.subtitle}>
+                                Enter the 6-digit code sent to{'\n'}
+                                <Text style={styles.mobileText}>+91 {mobile}</Text>
+                            </Text>
+                        </View>
+
+                        <View style={styles.otpContainer}>
+                            <OtpInput value={otp} onChange={setOtp} length={6} />
+                        </View>
+
+                        <View style={styles.resendContainer}>
+                            {canResend ? (
+                                <TouchableOpacity onPress={handleResendOtp}>
+                                    <Text style={styles.resendButton}>Resend OTP</Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <Text style={styles.resendTimer}>
+                                    Resend OTP in <Text style={styles.timerText}>{resendTimer}s</Text>
+                                </Text>
+                            )}
+                        </View>
+
+                        <Button
+                            title="Verify & Continue"
+                            onPress={handleVerifyOtp}
+                            loading={loading}
+                            disabled={otp.length !== 6 || loading}
+                            style={styles.verifyButton}
+                        />
+
+                        <Text style={styles.hint}>
+                            💡 In development mode, check the backend console for the OTP
                         </Text>
-                    )}
-                </View>
-
-                <Button
-                    title="Verify & Continue"
-                    onPress={handleVerifyOtp}
-                    loading={loading}
-                    disabled={otp.length !== 6 || loading}
-                    style={styles.verifyButton}
-                />
-
-                <Text style={styles.hint}>
-                    💡 In development mode, check the backend console for the OTP
-                </Text>
-            </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
@@ -146,6 +160,9 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
+    },
+    scrollContent: {
+        flexGrow: 1,
         padding: 24,
     },
     backButton: {
@@ -182,6 +199,7 @@ const styles = StyleSheet.create({
     },
     otpContainer: {
         marginBottom: 24,
+        width: '100%',
     },
     resendContainer: {
         alignItems: 'center',

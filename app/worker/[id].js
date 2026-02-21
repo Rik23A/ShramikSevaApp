@@ -247,10 +247,10 @@ export default function WorkerDetailsScreen() {
                 <View style={styles.statsGrid}>
                     <View style={styles.statItem}>
                         <Ionicons name="briefcase-outline" size={22} color={COLORS.primary} />
-                        <Text style={styles.statValue}>
-                            {worker.isFresher ? 'Fr' : `${worker.experience}+`}
+                        <Text style={[styles.statValue, worker.isFresher && { fontSize: 14 }]}>
+                            {worker.isFresher ? 'Fresher' : `${worker.experience}+`}
                         </Text>
-                        <Text style={styles.statLabel}>Exp (Yrs)</Text>
+                        <Text style={styles.statLabel}>{worker.isFresher ? 'Experience' : 'Exp (Yrs)'}</Text>
                     </View>
                     <View style={styles.verticalDivider} />
                     <View style={styles.statItem}>
@@ -267,6 +267,14 @@ export default function WorkerDetailsScreen() {
                         <Text style={styles.statLabel}>Location</Text>
                     </View>
                 </View>
+
+                {/* Bio Section */}
+                {worker.bio ? (
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>About Me</Text>
+                        <Text style={styles.bioText}>{worker.bio}</Text>
+                    </View>
+                ) : null}
 
                 {/* Skills Section */}
                 {worker.skills && worker.skills.length > 0 && (
@@ -604,5 +612,10 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         fontStyle: 'italic',
         marginLeft: 4,
+    },
+    bioText: {
+        fontSize: 15,
+        color: COLORS.text,
+        lineHeight: 22,
     },
 });

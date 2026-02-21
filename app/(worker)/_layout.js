@@ -6,6 +6,7 @@ import { COLORS } from '../../constants/config';
 import { useLanguage } from '../../context/LanguageContext';
 import NotificationBell from '../../components/NotificationBell';
 import LocationTracker from '../../components/worklog/LocationTracker';
+import HeaderProfile from '../../components/HeaderProfile';
 
 export default function WorkerLayout() {
     const insets = useSafeAreaInsets();
@@ -32,6 +33,7 @@ export default function WorkerLayout() {
                     headerTitleStyle: {
                         fontWeight: '600',
                     },
+                    headerRight: () => <HeaderProfile />,
                 }}
             >
                 <Tabs.Screen
@@ -42,7 +44,6 @@ export default function WorkerLayout() {
                             <Ionicons name="home" size={size} color={color} />
                         ),
                         headerTitle: 'Shramik Seva',
-                        headerRight: () => <NotificationBell iconColor={COLORS.white} />,
                     }}
                 />
                 <Tabs.Screen
@@ -53,7 +54,6 @@ export default function WorkerLayout() {
                             <Ionicons name="briefcase" size={size} color={color} />
                         ),
                         headerTitle: t('find_jobs'),
-                        headerRight: () => <NotificationBell iconColor={COLORS.white} />,
                     }}
                 />
                 <Tabs.Screen
@@ -64,7 +64,6 @@ export default function WorkerLayout() {
                             <Ionicons name="clipboard" size={size} color={color} />
                         ),
                         headerTitle: t('my_work'),
-                        headerRight: () => <NotificationBell iconColor={COLORS.white} />,
                     }}
                 />
                 <Tabs.Screen
@@ -75,7 +74,6 @@ export default function WorkerLayout() {
                             <Ionicons name="chatbubbles" size={size} color={color} />
                         ),
                         headerTitle: t('nav_messages'),
-                        headerRight: () => <NotificationBell iconColor={COLORS.white} />,
                     }}
                 />
                 <Tabs.Screen
@@ -86,7 +84,6 @@ export default function WorkerLayout() {
                             <Ionicons name="person" size={size} color={color} />
                         ),
                         headerTitle: t('my_profile'),
-                        headerRight: () => <NotificationBell iconColor={COLORS.white} />,
                     }}
                 />
             </Tabs>

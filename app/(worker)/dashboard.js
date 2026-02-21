@@ -17,9 +17,11 @@ import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getWorkerDashboard } from '../../services/userService';
+import { getPendingRatingPrompts } from '../../services/ratingService';
 import JobCard from '../../components/JobCard';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import RatingModal from '../../components/ui/RatingModal';
 
 export default function WorkerDashboard() {
     const { user } = useAuth();
@@ -27,11 +29,23 @@ export default function WorkerDashboard() {
     const [dashboardData, setDashboardData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [pendingPrompts, setPendingPrompts] = useState([]);
+    const [currentPrompt, setCurrentPrompt] = useState(null);
+    const [showRatingModal, setShowRatingModal] = useState(false);
 
     const fetchDashboard = async () => {
         try {
-            const data = await getWorkerDashboard();
+            const [data, prompts] = await Promise.all([
+                getWorkerDashboard(),
+                getPendingRatingPrompts()
+            ]);
             setDashboardData(data);
+            setPendingPrompts(prompts);
+
+            if (prompts && prompts.length > 0) {
+                setCurrentPrompt(prompts[0]);
+                setShowRatingModal(true);
+            }
         } catch (error) {
             console.error('Failed to fetch dashboard:', error);
         } finally {
@@ -70,15 +84,7 @@ export default function WorkerDashboard() {
                         <Text style={styles.welcomeSubtitle}>{t('welcome')},</Text>
                         <Text style={styles.userName}>{user?.name || 'Worker'}! 👋</Text>
                     </View>
-                    <TouchableOpacity onPress={() => router.push('/(worker)/profile')}>
-                        <View style={styles.headerAvatar}>
-                            {user?.profilePicture ? (
-                                <Image source={{ uri: getFullImageUrl(user.profilePicture) }} style={styles.avatarImage} />
-                            ) : (
-                                <Ionicons name="person" size={20} color={COLORS.primary} />
-                            )}
-                        </View>
-                    </TouchableOpacity>
+
                 </View>
 
                 {/* Quick Stats Grid Overlapping Header */}
@@ -190,7 +196,26 @@ export default function WorkerDashboard() {
                     </Animated.View>
                 )}
             </View>
-        </ScrollView>
+
+
+            <RatingModal
+                visible={showRatingModal}
+                prompt={currentPrompt}
+                onClose={() => setShowRatingModal(false)}
+                onSuccess={() => {
+                    // Remove the rated prompt from the list
+                    const updatedPrompts = pendingPrompts.slice(1);
+                    setPendingPrompts(updatedPrompts);
+                    if (updatedPrompts.length > 0) {
+                        setCurrentPrompt(updatedPrompts[0]);
+                        // Keep modal open or reopen for next prompt
+                        setTimeout(() => setShowRatingModal(true), 300);
+                    } else {
+                        setShowRatingModal(false);
+                    }
+                }}
+            />
+        </ScrollView >
     );
 }
 
@@ -204,7 +229,7 @@ const styles = StyleSheet.create({
     },
     headerBackground: {
         backgroundColor: COLORS.primary,
-        paddingTop: 50,
+        paddingTop: 25,
         paddingBottom: 80, // Space for overlap
         paddingHorizontal: 20,
         borderBottomLeftRadius: 30,
@@ -287,7 +312,7 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         marginBottom: 16,
         marginHorizontal: 20,
-        marginTop: 24,
+        marginTop: 40,
     },
     actionsContainer: {
         flexDirection: 'row',

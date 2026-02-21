@@ -9,6 +9,7 @@ import {
     RefreshControl,
     Dimensions,
     Platform,
+    TextInput,
 } from 'react-native';
 import Animated, {
     useSharedValue,
@@ -39,6 +40,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useLanguage } from '../../context/LanguageContext';
 import StartWorkModal from '../../components/worklog/StartWorkModal';
 import EndWorkModal from '../../components/worklog/EndWorkModal';
+import ApplicationStatusModal from '../../components/ApplicationStatusModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TAB_WIDTH = SCREEN_WIDTH / 4;
@@ -165,7 +167,8 @@ const JobCard = ({ job, index, type, workLogs, onStartWork, onEndWork, onViewDet
         const todayWorkLog = workLogs.find(log => {
             const logDate = new Date(log.workDate);
             logDate.setHours(0, 0, 0, 0);
-            return log.job === job._id && logDate.getTime() === today.getTime();
+            const logJobId = log.job?._id || log.job;
+            return logJobId === job._id && logDate.getTime() === today.getTime();
         });
 
         if (todayWorkLog) {
@@ -446,52 +449,69 @@ const ApplicationCard = ({ application, index, onViewDetails }) => {
     );
 };
 
-// History Card Component
-const HistoryCard = ({ job, workLogs, index, onViewDetails }) => {
+// Daily History Card Component
+const DailyHistoryCard = ({ log, index }) => {
     const { t } = useLanguage();
-    const totalEarnings = workLogs?.reduce((acc, log) => {
-        if (log.status === 'completed') {
-            return acc + (job.salary || 0);
-        }
-        return acc;
-    }, 0) || 0;
-
-    const completedDays = workLogs?.filter(log => log.status === 'completed').length || 0;
+    const job = log.job;
+    const isCompleted = log.status === 'completed';
 
     return (
-        <Animated.View entering={FadeInDown.delay(index * 80).springify()}>
-            <TouchableOpacity onPress={onViewDetails} activeOpacity={0.8}>
-                <View style={styles.historyCard}>
-                    <View style={styles.historyHeader}>
-                        <View style={styles.historyInfo}>
-                            <Text style={styles.historyTitle} numberOfLines={1}>
-                                {job.title}
-                            </Text>
-                            <Text style={styles.historyCompany} numberOfLines={1}>
-                                {job.employer?.companyName || job.employer?.name || t('company')}
-                            </Text>
-                        </View>
-                        <View style={[styles.completedBadge]}>
-                            <Ionicons name="checkmark-done-circle" size={16} color={COLORS.success} />
-                            <Text style={styles.completedText}>{t('completed')}</Text>
-                        </View>
+        <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
+            <View style={styles.historyCard}>
+                <View style={styles.historyHeader}>
+                    <View style={styles.historyInfo}>
+                        <Text style={styles.historyTitle} numberOfLines={1}>
+                            {job?.title || t('job_position')}
+                        </Text>
+                        <Text style={styles.historyCompany} numberOfLines={1}>
+                            {job?.employer?.companyName || job?.employer?.name || t('company')}
+                        </Text>
+                        <Text style={styles.historyDate}>
+                            {new Date(log.workDate).toLocaleDateString(undefined, {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                            })}
+                        </Text>
                     </View>
-
-                    <View style={styles.earningsRow}>
-                        <View style={styles.earningItem}>
-                            <Text style={styles.earningLabel}>{t('days_worked')}</Text>
-                            <Text style={styles.earningValue}>{completedDays}</Text>
-                        </View>
-                        <View style={styles.earningDivider} />
-                        <View style={styles.earningItem}>
-                            <Text style={styles.earningLabel}>{t('total_earned')}</Text>
-                            <Text style={[styles.earningValue, styles.earningValueHighlight]}>
-                                ₹{totalEarnings.toLocaleString()}
-                            </Text>
-                        </View>
+                    <View style={[styles.completedBadge, { backgroundColor: isCompleted ? COLORS.successLight : COLORS.warningLight }]}>
+                        <Ionicons
+                            name={isCompleted ? "checkmark-done-circle" : "time-outline"}
+                            size={16}
+                            color={isCompleted ? COLORS.success : COLORS.warning}
+                        />
+                        <Text style={[styles.completedText, { color: isCompleted ? COLORS.success : COLORS.warning }]}>
+                            {isCompleted ? t('completed') : t(log.status)}
+                        </Text>
                     </View>
                 </View>
-            </TouchableOpacity>
+
+                {/* Timings */}
+                <View style={styles.timeRow}>
+                    <View style={styles.timeItem}>
+                        <Ionicons name="play-circle-outline" size={14} color={COLORS.textSecondary} />
+                        <Text style={styles.timeText}>
+                            {log.startTime ? new Date(log.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                        </Text>
+                    </View>
+                    <Ionicons name="arrow-forward" size={14} color={COLORS.textLight} />
+                    <View style={styles.timeItem}>
+                        <Ionicons name="stop-circle-outline" size={14} color={COLORS.textSecondary} />
+                        <Text style={styles.timeText}>
+                            {log.endTime ? new Date(log.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Earnings if completed */}
+                {isCompleted && job?.salary && (
+                    <View style={styles.dailyEarnings}>
+                        <Text style={styles.dailyEarningsLabel}>{t('daily_earnings')}:</Text>
+                        <Text style={styles.dailyEarningsValue}>₹{job.salary}</Text>
+                    </View>
+                )}
+            </View>
         </Animated.View>
     );
 };
@@ -518,6 +538,9 @@ export default function MyWorkScreen() {
     const [activeTab, setActiveTab] = useState(tab || 'assigned');
     const { t } = useLanguage();
 
+    // Search state for History tab
+    const [searchQuery, setSearchQuery] = useState('');
+
     const TABS = useMemo(() => [
         { key: 'assigned', label: t('tab_assigned'), icon: 'briefcase', activeIcon: 'briefcase' },
         { key: 'requests', label: t('tab_requests'), icon: 'mail-outline', activeIcon: 'mail' },
@@ -539,10 +562,12 @@ export default function MyWorkScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
-    // Work log modal states
+    // ... existing modal states ...
     const [startWorkModalVisible, setStartWorkModalVisible] = useState(false);
     const [endWorkModalVisible, setEndWorkModalVisible] = useState(false);
     const [selectedJobId, setSelectedJobId] = useState(null);
+    const [selectedApplication, setSelectedApplication] = useState(null);
+    const [showStatusModal, setShowStatusModal] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -570,6 +595,7 @@ export default function MyWorkScreen() {
         fetchData();
     }, [fetchData]);
 
+    // ... existing handlers (handleAccept, handleReject, handleRefresh) ...
     const handleAccept = async (applicationId) => {
         setActionLoading(true);
         try {
@@ -603,6 +629,7 @@ export default function MyWorkScreen() {
         fetchData();
     }, [fetchData]);
 
+
     if (loading) {
         return <LoadingSpinner fullScreen message={t('loading')} />;
     }
@@ -611,8 +638,30 @@ export default function MyWorkScreen() {
         assigned: assignedJobs.length,
         requests: hiringRequests.length,
         applications: applications.length,
-        history: completedJobs.length,
+        history: 0, // Count calculated dynamically based on logs
     };
+
+    // Filter work logs for history tab
+    const getFilteredHistory = () => {
+        // Filter for completed logs only as requested
+        // Sort by date descending
+        let filtered = workLogs
+            .filter(log => log.status === 'completed')
+            .sort((a, b) => new Date(b.workDate) - new Date(a.workDate));
+
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            filtered = filtered.filter(log =>
+                log.job?.title?.toLowerCase().includes(query) ||
+                log.job?.employer?.companyName?.toLowerCase().includes(query) ||
+                log.job?.employer?.name?.toLowerCase().includes(query)
+            );
+        }
+        return filtered;
+    };
+
+    const filteredHistory = getFilteredHistory();
+    tabCounts.history = filteredHistory.length;
 
     const renderContent = () => {
         switch (activeTab) {
@@ -672,7 +721,10 @@ export default function MyWorkScreen() {
                             key={app._id}
                             application={app}
                             index={index}
-                            onViewDetails={() => app.job?._id && router.push('/job-details/' + app.job._id)}
+                            onViewDetails={() => {
+                                setSelectedApplication(app);
+                                setShowStatusModal(true);
+                            }}
                         />
                     ))
                 ) : (
@@ -684,22 +736,41 @@ export default function MyWorkScreen() {
                 );
 
             case 'history':
-                return completedJobs.length > 0 ? (
-                    completedJobs.map((job, index) => (
-                        <HistoryCard
-                            key={job._id}
-                            job={job}
-                            workLogs={workLogs.filter(log => log.job?._id === job._id)}
-                            index={index}
-                            onViewDetails={() => router.push('/job-details/' + job._id)}
-                        />
-                    ))
-                ) : (
-                    <EmptyState
-                        icon="time-outline"
-                        title={t('no_history')}
-                        subtitle={t('no_history_sub')}
-                    />
+                return (
+                    <>
+                        {/* Search Bar for History */}
+                        <View style={styles.searchContainer}>
+                            <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder={t('search_history')}
+                                placeholderTextColor={COLORS.textLight}
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                            />
+                            {searchQuery.length > 0 && (
+                                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                                    <Ionicons name="close-circle" size={20} color={COLORS.textLight} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        {filteredHistory.length > 0 ? (
+                            filteredHistory.map((log, index) => (
+                                <DailyHistoryCard
+                                    key={log._id}
+                                    log={log}
+                                    index={index}
+                                />
+                            ))
+                        ) : (
+                            <EmptyState
+                                icon="time-outline"
+                                title={t('no_history')}
+                                subtitle={t('no_history_sub')}
+                            />
+                        )}
+                    </>
                 );
 
             default:
@@ -773,6 +844,15 @@ export default function MyWorkScreen() {
                 onSuccess={() => {
                     fetchData(); // Refresh data after successful end
                 }}
+            />
+
+            <ApplicationStatusModal
+                isOpen={showStatusModal}
+                onClose={() => {
+                    setShowStatusModal(false);
+                    setSelectedApplication(null);
+                }}
+                application={selectedApplication}
             />
         </View>
     );
@@ -1134,18 +1214,20 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.card,
         borderRadius: 16,
         padding: 16,
-        marginBottom: 10,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
+        marginBottom: 16,
+        shadowColor: COLORS.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
     historyHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: 16,
+        marginBottom: 12,
     },
     historyInfo: {
         flex: 1,
@@ -1153,55 +1235,95 @@ const styles = StyleSheet.create({
     },
     historyTitle: {
         fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.text,
+        fontFamily: 'Outfit-Bold',
+        color: COLORS.textPrimary,
         marginBottom: 4,
     },
     historyCompany: {
-        fontSize: 13,
+        fontSize: 14,
+        fontFamily: 'Outfit-Medium',
         color: COLORS.textSecondary,
+        marginBottom: 4,
+    },
+    historyDate: {
+        fontSize: 12,
+        fontFamily: 'Outfit-Regular',
+        color: COLORS.textLight,
     },
     completedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: COLORS.successLight,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        borderRadius: 20,
-        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
     },
     completedText: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: COLORS.success,
-    },
-    earningsRow: {
-        flexDirection: 'row',
-        backgroundColor: COLORS.background,
-        borderRadius: 12,
-        padding: 16,
-    },
-    earningItem: {
-        flex: 1,
-        alignItems: 'center',
-    },
-    earningLabel: {
         fontSize: 12,
+        fontFamily: 'Outfit-Bold',
+        color: COLORS.success,
+        marginLeft: 4,
+        textTransform: 'capitalize',
+    },
+    timeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.background,
+        padding: 10,
+        borderRadius: 12,
+        marginBottom: 12,
+    },
+    timeItem: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+    timeText: {
+        fontSize: 13,
+        fontFamily: 'Outfit-Medium',
+        color: COLORS.textPrimary,
+    },
+    dailyEarnings: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 4,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+    },
+    dailyEarningsLabel: {
+        fontSize: 14,
+        fontFamily: 'Outfit-Medium',
         color: COLORS.textSecondary,
-        marginBottom: 4,
     },
-    earningValue: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: COLORS.text,
-    },
-    earningValueHighlight: {
+    dailyEarningsValue: {
+        fontSize: 16,
+        fontFamily: 'Outfit-Bold',
         color: COLORS.success,
     },
-    earningDivider: {
-        width: 1,
-        backgroundColor: COLORS.border,
-        marginHorizontal: 16,
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.card,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    searchIcon: {
+        marginRight: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        fontFamily: 'Outfit-Regular',
+        color: COLORS.textPrimary,
+        paddingVertical: 4,
     },
 
     // Empty State Styles

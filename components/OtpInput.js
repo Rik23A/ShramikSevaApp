@@ -7,21 +7,43 @@ const OtpInput = ({ length = 6, value, onChange }) => {
     const [otp, setOtp] = useState(new Array(length).fill(''));
 
     const handleChange = (text, index) => {
+        // Handle multi-character input (like paste or fast typing)
+        const cleanedText = text.replace(/[^0-9]/g, '');
+        if (!cleanedText) {
+            const newOtp = [...otp];
+            newOtp[index] = '';
+            setOtp(newOtp);
+            onChange(newOtp.join(''));
+            return;
+        }
+
         const newOtp = [...otp];
-        newOtp[index] = text;
+        const chars = cleanedText.split('');
+
+        let nextIndex = index;
+        chars.forEach((char, i) => {
+            if (index + i < length) {
+                newOtp[index + i] = char;
+                nextIndex = index + i + 1;
+            }
+        });
+
         setOtp(newOtp);
         onChange(newOtp.join(''));
 
-        // Move to next input
-        if (text && index < length - 1) {
-            inputRefs.current[index + 1].focus();
+        // Move focus
+        if (nextIndex < length) {
+            inputRefs.current[nextIndex].focus();
+        } else if (nextIndex === length) {
+            inputRefs.current[length - 1].blur();
         }
     };
 
     const handleKeyPress = (e, index) => {
-        // Move to previous input on backspace
-        if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-            inputRefs.current[index - 1].focus();
+        if (e.nativeEvent.key === 'Backspace') {
+            if (!otp[index] && index > 0) {
+                inputRefs.current[index - 1].focus();
+            }
         }
     };
 
@@ -33,10 +55,10 @@ const OtpInput = ({ length = 6, value, onChange }) => {
                     ref={(ref) => (inputRefs.current[index] = ref)}
                     style={[styles.input, digit && styles.inputFilled]}
                     value={digit}
-                    onChangeText={(text) => handleChange(text.slice(-1), index)}
+                    onChangeText={(text) => handleChange(text, index)}
                     onKeyPress={(e) => handleKeyPress(e, index)}
                     keyboardType="number-pad"
-                    maxLength={1}
+                    maxLength={length - index} // Allow pasting remaining digits
                     selectTextOnFocus
                 />
             ))}
@@ -47,24 +69,25 @@ const OtpInput = ({ length = 6, value, onChange }) => {
 const styles = StyleSheet.create({
     container: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
+        justifyContent: 'space-evenly',
+        paddingHorizontal: 0,
+        width: '100%',
     },
     input: {
-        width: 45,
-        height: 55,
-        borderWidth: 2,
+        width: 42,
+        height: 52,
+        borderWidth: 1.5,
         borderColor: COLORS.border,
         borderRadius: 10,
         textAlign: 'center',
-        fontSize: 24,
-        fontWeight: '600',
+        fontSize: 22,
+        fontWeight: '700',
         color: COLORS.text,
         backgroundColor: COLORS.white,
     },
     inputFilled: {
         borderColor: COLORS.primary,
-        backgroundColor: '#FFF3E0',
+        backgroundColor: COLORS.primaryLight + '10',
     },
 });
 

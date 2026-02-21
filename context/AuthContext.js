@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { saveToken, saveUser, getToken, getUser, clearAuthData } from '../utils/storage';
+import { getProfile } from '../services/userService';
 
 const AuthContext = createContext({});
 
@@ -22,6 +23,9 @@ export const AuthProvider = ({ children }) => {
                 console.log('Auth Context: Loaded stored user:', storedUser._id);
                 setToken(storedToken);
                 setUser(storedUser);
+
+                // Refresh profile data in background to get latest workerType/skills
+                refreshProfile().catch(err => console.log('Background profile refresh failed:', err));
             } else {
                 console.log('Auth Context: No stored user or token found');
             }
@@ -65,6 +69,19 @@ export const AuthProvider = ({ children }) => {
         setUser(updatedUser);
     };
 
+    // Refresh user profile from backend
+    const refreshProfile = async () => {
+        try {
+            const freshProfile = await getProfile();
+            await saveUser(freshProfile);
+            setUser(freshProfile);
+            return freshProfile;
+        } catch (error) {
+            console.error('[AuthContext] Failed to refresh profile:', error);
+            throw error;
+        }
+    };
+
     const value = {
         user,
         token,
@@ -75,6 +92,7 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         updateUser,
+        refreshProfile, // NEW: Expose refresh function
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

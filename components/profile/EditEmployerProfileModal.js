@@ -10,10 +10,12 @@ import {
     Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, BUSINESS_TYPES, INDIAN_STATES as STATES } from '../../constants/config';
+import { COLORS, BUSINESS_TYPES, EMPLOYEE_COUNTS, INDIAN_STATES as STATES } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import Button from '../ui/Button';
 
 export default function EditEmployerProfileModal({ visible, onClose, profile, onSave }) {
+    const { t } = useLanguage();
     const [formData, setFormData] = useState({
         name: profile?.name || '',
         companyName: profile?.companyName || '',
@@ -23,6 +25,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
             employeeCount: profile?.companyDetails?.employeeCount || '',
             website: profile?.companyDetails?.website || '',
             description: profile?.companyDetails?.description || '',
+            foundedYear: profile?.companyDetails?.foundedYear || '',
             contactPerson: {
                 name: profile?.companyDetails?.contactPerson?.name || '',
                 designation: profile?.companyDetails?.contactPerson?.designation || '',
@@ -36,8 +39,29 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                 pincode: profile?.companyDetails?.address?.pincode || '',
             },
         },
+        mobile: profile?.mobile || '',
+        gstNumber: profile?.gstNumber || '',
+        gender: profile?.gender || '',
+        bio: profile?.bio || '',
     });
+
     const [saving, setSaving] = useState(false);
+    const [dropdownVisible, setDropdownVisible] = useState(false);
+    const [dropdownConfig, setDropdownConfig] = useState({
+        items: [],
+        title: '',
+        key: '',
+    });
+
+    const openDropdown = (key, title, items) => {
+        setDropdownConfig({ key, title, items });
+        setDropdownVisible(true);
+    };
+
+    const handleSelect = (item) => {
+        updateNestedField(dropdownConfig.key, item);
+        setDropdownVisible(false);
+    };
 
     const handleSave = async () => {
         if (!formData.name.trim() || !formData.companyName.trim()) {
@@ -96,43 +120,81 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     <TouchableOpacity onPress={onClose}>
                         <Ionicons name="close" size={28} color={COLORS.text} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Edit Company Profile</Text>
+                    <Text style={styles.headerTitle}>{t('edit_profile')}</Text>
                     <View style={{ width: 28 }} />
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {/* Basic Info */}
-                    <Text style={styles.sectionTitle}>Basic Information</Text>
+                    <Text style={styles.sectionTitle}>{t('basic_info')}</Text>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>Owner Name *</Text>
+                        <Text style={styles.label}>{t('full_name')} *</Text>
                         <TextInput
                             style={styles.input}
                             value={formData.name}
                             onChangeText={(text) => setFormData({ ...formData, name: text })}
-                            placeholder="Enter owner name"
+                            placeholder={t('enter_full_name')}
                             placeholderTextColor={COLORS.textLight}
                         />
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>Company Name *</Text>
+                        <Text style={styles.label}>{t('company_name')} *</Text>
                         <TextInput
                             style={styles.input}
                             value={formData.companyName}
                             onChangeText={(text) => setFormData({ ...formData, companyName: text })}
-                            placeholder="Enter company name"
+                            placeholder={t('enter_company_name')}
                             placeholderTextColor={COLORS.textLight}
                         />
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>Email</Text>
+                        <Text style={styles.label}>{t('gender')}</Text>
+                        <View style={styles.chipsContainer}>
+                            {['male', 'female', 'other'].map((g) => (
+                                <TouchableOpacity
+                                    key={g}
+                                    style={[
+                                        styles.chip,
+                                        formData.gender === g && styles.chipActive,
+                                    ]}
+                                    onPress={() => setFormData({ ...formData, gender: g })}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.chipText,
+                                            formData.gender === g && styles.chipTextActive,
+                                        ]}
+                                    >
+                                        {t(`${g}`)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('bio')}</Text>
+                        <TextInput
+                            style={[styles.input, styles.textArea]}
+                            value={formData.bio}
+                            onChangeText={(text) => setFormData({ ...formData, bio: text })}
+                            placeholder={t('bio_placeholder') || 'Tell us about yourself...'}
+                            placeholderTextColor={COLORS.textLight}
+                            multiline
+                            numberOfLines={4}
+                        />
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('email')}</Text>
                         <TextInput
                             style={styles.input}
                             value={formData.email}
                             onChangeText={(text) => setFormData({ ...formData, email: text })}
-                            placeholder="company@example.com"
+                            placeholder={t('enter_email')}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="email-address"
                             autoCapitalize="none"
@@ -140,102 +202,12 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>Business Type</Text>
-                        <View style={styles.chipsContainer}>
-                            {BUSINESS_TYPES.map((type) => (
-                                <TouchableOpacity
-                                    key={type}
-                                    style={[
-                                        styles.chip,
-                                        formData.businessType === type && styles.chipActive,
-                                    ]}
-                                    onPress={() => setFormData({ ...formData, businessType: type })}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.chipText,
-                                            formData.businessType === type && styles.chipTextActive,
-                                        ]}
-                                    >
-                                        {type}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    </View>
-
-                    {/* Company Details */}
-                    <Text style={styles.sectionTitle}>Company Details</Text>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>Employee Count</Text>
+                        <Text style={styles.label}>{t('mobile')}</Text>
                         <TextInput
                             style={styles.input}
-                            value={formData.companyDetails.employeeCount}
-                            onChangeText={(text) => updateNestedField('companyDetails.employeeCount', text)}
-                            placeholder="e.g., 10-50"
-                            placeholderTextColor={COLORS.textLight}
-                        />
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>Website</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={formData.companyDetails.website}
-                            onChangeText={(text) => updateNestedField('companyDetails.website', text)}
-                            placeholder="https://example.com"
-                            placeholderTextColor={COLORS.textLight}
-                            keyboardType="url"
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>Description</Text>
-                        <TextInput
-                            style={[styles.input, styles.textArea]}
-                            value={formData.companyDetails.description}
-                            onChangeText={(text) => updateNestedField('companyDetails.description', text)}
-                            placeholder="Tell us about your company..."
-                            placeholderTextColor={COLORS.textLight}
-                            multiline
-                            numberOfLines={4}
-                        />
-                    </View>
-
-                    {/* Contact Person */}
-                    <Text style={styles.sectionTitle}>Contact Person</Text>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>Name</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={formData.companyDetails.contactPerson.name}
-                            onChangeText={(text) => updateNestedField('companyDetails.contactPerson.name', text)}
-                            placeholder="Contact person name"
-                            placeholderTextColor={COLORS.textLight}
-                        />
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>Designation</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={formData.companyDetails.contactPerson.designation}
-                            onChangeText={(text) => updateNestedField('companyDetails.contactPerson.designation', text)}
-                            placeholder="e.g., HR Manager"
-                            placeholderTextColor={COLORS.textLight}
-                        />
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>Phone</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={formData.companyDetails.contactPerson.phone}
-                            onChangeText={(text) => updateNestedField('companyDetails.contactPerson.phone', text)}
-                            placeholder="Contact number"
+                            value={formData.mobile}
+                            onChangeText={(text) => setFormData({ ...formData, mobile: text })}
+                            placeholder={t('mobile_placeholder') || 'Owner mobile number'}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="phone-pad"
                             maxLength={10}
@@ -243,12 +215,118 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>Email</Text>
+                        <Text style={styles.label}>{t('business_type')}</Text>
+                        <TouchableOpacity
+                            style={styles.selectInput}
+                            onPress={() => openDropdown('businessType', t('business_type'), BUSINESS_TYPES)}
+                        >
+                            <Text style={[styles.selectText, !formData.businessType && styles.placeholderText]}>
+                                {formData.businessType || t('select_business_type')}
+                            </Text>
+                            <Ionicons name="chevron-down" size={20} color={COLORS.textLight} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Company Details */}
+                    <Text style={styles.sectionTitle}>{t('company_details')}</Text>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('employee_count')}</Text>
+                        <TouchableOpacity
+                            style={styles.selectInput}
+                            onPress={() => openDropdown('companyDetails.employeeCount', t('employee_count'), EMPLOYEE_COUNTS)}
+                        >
+                            <Text style={[styles.selectText, !formData.companyDetails.employeeCount && styles.placeholderText]}>
+                                {formData.companyDetails.employeeCount || t('select_employee_count') || 'Select employee count'}
+                            </Text>
+                            <Ionicons name="chevron-down" size={20} color={COLORS.textLight} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('website')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={formData.companyDetails.website}
+                            onChangeText={(text) => updateNestedField('companyDetails.website', text)}
+                            placeholder={t('enter_website')}
+                            placeholderTextColor={COLORS.textLight}
+                            keyboardType="url"
+                            autoCapitalize="none"
+                        />
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('founded_year')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={String(formData.companyDetails.foundedYear || '')}
+                            onChangeText={(text) => updateNestedField('companyDetails.foundedYear', text)}
+                            placeholder={t('founded_year_placeholder') || 'e.g., 2010'}
+                            placeholderTextColor={COLORS.textLight}
+                            keyboardType="numeric"
+                            maxLength={4}
+                        />
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('description') || 'Description'}</Text>
+                        <TextInput
+                            style={[styles.input, styles.textArea]}
+                            value={formData.companyDetails.description}
+                            onChangeText={(text) => updateNestedField('companyDetails.description', text)}
+                            placeholder={t('company_description_placeholder') || 'Tell us about your company...'}
+                            placeholderTextColor={COLORS.textLight}
+                            multiline
+                            numberOfLines={4}
+                        />
+                    </View>
+
+                    {/* Contact Person */}
+                    <Text style={styles.sectionTitle}>{t('contact_person')}</Text>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('full_name')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={formData.companyDetails.contactPerson.name}
+                            onChangeText={(text) => updateNestedField('companyDetails.contactPerson.name', text)}
+                            placeholder={t('contact_person_name_placeholder') || 'Contact person name'}
+                            placeholderTextColor={COLORS.textLight}
+                        />
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('designation')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={formData.companyDetails.contactPerson.designation}
+                            onChangeText={(text) => updateNestedField('companyDetails.contactPerson.designation', text)}
+                            placeholder={t('enter_designation')}
+                            placeholderTextColor={COLORS.textLight}
+                        />
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('mobile')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={formData.companyDetails.contactPerson.phone}
+                            onChangeText={(text) => updateNestedField('companyDetails.contactPerson.phone', text)}
+                            placeholder={t('contact_number_placeholder') || 'Contact number'}
+                            placeholderTextColor={COLORS.textLight}
+                            keyboardType="phone-pad"
+                            maxLength={10}
+                        />
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('email')}</Text>
                         <TextInput
                             style={styles.input}
                             value={formData.companyDetails.contactPerson.email}
                             onChangeText={(text) => updateNestedField('companyDetails.contactPerson.email', text)}
-                            placeholder="Contact email"
+                            placeholder={t('contact_email_placeholder') || 'Contact email'}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="email-address"
                             autoCapitalize="none"
@@ -256,38 +334,38 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     </View>
 
                     {/* Address */}
-                    <Text style={styles.sectionTitle}>Address</Text>
+                    <Text style={styles.sectionTitle}>{t('location')}</Text>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>Street</Text>
+                        <Text style={styles.label}>{t('street') || 'Street'}</Text>
                         <TextInput
                             style={styles.input}
                             value={formData.companyDetails.address.street}
                             onChangeText={(text) => updateNestedField('companyDetails.address.street', text)}
-                            placeholder="Street address"
+                            placeholder={t('street_placeholder') || 'Street address'}
                             placeholderTextColor={COLORS.textLight}
                         />
                     </View>
 
                     <View style={styles.row}>
                         <View style={[styles.section, { flex: 1, marginRight: 8 }]}>
-                            <Text style={styles.label}>City</Text>
+                            <Text style={styles.label}>{t('city')}</Text>
                             <TextInput
                                 style={styles.input}
                                 value={formData.companyDetails.address.city}
                                 onChangeText={(text) => updateNestedField('companyDetails.address.city', text)}
-                                placeholder="City"
+                                placeholder={t('city')}
                                 placeholderTextColor={COLORS.textLight}
                             />
                         </View>
 
                         <View style={[styles.section, { flex: 1, marginLeft: 8 }]}>
-                            <Text style={styles.label}>Pincode</Text>
+                            <Text style={styles.label}>{t('pincode')}</Text>
                             <TextInput
                                 style={styles.input}
                                 value={formData.companyDetails.address.pincode}
                                 onChangeText={(text) => updateNestedField('companyDetails.address.pincode', text)}
-                                placeholder="Pincode"
+                                placeholder={t('pincode')}
                                 placeholderTextColor={COLORS.textLight}
                                 keyboardType="numeric"
                             />
@@ -295,41 +373,88 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>State</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <View style={styles.chipsContainer}>
-                                {STATES.slice(0, 10).map((state) => (
-                                    <TouchableOpacity
-                                        key={state}
-                                        style={[
-                                            styles.chip,
-                                            formData.companyDetails.address.state === state && styles.chipActive,
-                                        ]}
-                                        onPress={() => updateNestedField('companyDetails.address.state', state)}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.chipText,
-                                                formData.companyDetails.address.state === state && styles.chipTextActive,
-                                            ]}
-                                        >
-                                            {state}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </ScrollView>
+                        <Text style={styles.label}>{t('state')}</Text>
+                        <TouchableOpacity
+                            style={styles.selectInput}
+                            onPress={() => openDropdown('companyDetails.address.state', t('state'), STATES)}
+                        >
+                            <Text style={[styles.selectText, !formData.companyDetails.address.state && styles.placeholderText]}>
+                                {formData.companyDetails.address.state || t('select_state')}
+                            </Text>
+                            <Ionicons name="chevron-down" size={20} color={COLORS.textLight} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* GST Number */}
+                    <Text style={styles.sectionTitle}>{t('employer_details')}</Text>
+                    <View style={styles.section}>
+                        <Text style={styles.label}>{t('gst_number')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={formData.gstNumber}
+                            onChangeText={(text) => setFormData({ ...formData, gstNumber: text })}
+                            placeholder={t('enter_gstin')}
+                            placeholderTextColor={COLORS.textLight}
+                            autoCapitalize="characters"
+                        />
                     </View>
                 </ScrollView>
 
                 <View style={styles.footer}>
                     <Button
-                        title={saving ? 'Saving...' : 'Save Changes'}
+                        title={saving ? (t('saving') || 'Saving...') : (t('save_changes') || 'Save Changes')}
                         onPress={handleSave}
                         disabled={saving}
                         loading={saving}
                     />
                 </View>
+
+                {/* Selection Modal */}
+                <Modal
+                    visible={dropdownVisible}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={() => setDropdownVisible(false)}
+                >
+                    <TouchableOpacity
+                        style={styles.modalOverlay}
+                        activeOpacity={1}
+                        onPress={() => setDropdownVisible(false)}
+                    >
+                        <View style={styles.dropdownModal}>
+                            <View style={styles.dropdownHeader}>
+                                <Text style={styles.dropdownTitle}>{dropdownConfig.title}</Text>
+                                <TouchableOpacity onPress={() => setDropdownVisible(false)}>
+                                    <Ionicons name="close" size={24} color={COLORS.text} />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {dropdownConfig.items.map((item, index) => (
+                                    <TouchableOpacity
+                                        key={index}
+                                        style={styles.dropdownItem}
+                                        onPress={() => handleSelect(item)}
+                                    >
+                                        <Text style={[
+                                            styles.dropdownItemText,
+                                            (formData[dropdownConfig.key] === item ||
+                                                (dropdownConfig.key.includes('.') &&
+                                                    dropdownConfig.key.split('.').reduce((obj, key) => obj?.[key], formData) === item))
+                                            && styles.dropdownItemTextSelected
+                                        ]}>
+                                            {item}
+                                        </Text>
+                                        {(formData[dropdownConfig.key] === item ||
+                                            (dropdownConfig.key.includes('.') &&
+                                                dropdownConfig.key.split('.').reduce((obj, key) => obj?.[key], formData) === item)) && (
+                                                <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                                            )}
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    </TouchableOpacity>
+                </Modal>
             </View>
         </Modal>
     );
@@ -386,6 +511,23 @@ const styles = StyleSheet.create({
         fontSize: 15,
         color: COLORS.text,
     },
+    selectInput: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: COLORS.white,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 12,
+        padding: 14,
+    },
+    selectText: {
+        fontSize: 15,
+        color: COLORS.text,
+    },
+    placeholderText: {
+        color: COLORS.textLight,
+    },
     textArea: {
         height: 100,
         textAlignVertical: 'top',
@@ -420,5 +562,46 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.white,
         borderTopWidth: 1,
         borderTopColor: COLORS.border,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    dropdownModal: {
+        backgroundColor: COLORS.white,
+        borderRadius: 12,
+        maxHeight: '60%',
+        paddingBottom: 10,
+    },
+    dropdownHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    dropdownTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.text,
+    },
+    dropdownItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight,
+    },
+    dropdownItemText: {
+        fontSize: 15,
+        color: COLORS.text,
+    },
+    dropdownItemTextSelected: {
+        color: COLORS.primary,
+        fontWeight: '600',
     },
 });

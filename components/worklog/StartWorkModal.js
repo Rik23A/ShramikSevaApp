@@ -29,7 +29,9 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
     const [currentStep, setCurrentStep] = useState(1);
 
     useEffect(() => {
-        if (!visible) {
+        if (visible) {
+            checkExistingWorkLog();
+        } else {
             // Reset state when modal closes
             setOtp('');
             setOtpRequested(false);
@@ -37,6 +39,40 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             setCurrentStep(1);
         }
     }, [visible]);
+
+    const checkExistingWorkLog = async () => {
+        try {
+            // We need to fetch the work log to see if OTP was already generated
+            // Assuming getWorkLogByJob is imported or available via props/context
+            const { getWorkLogByJob } = require('../../services/worklogService');
+            const log = await getWorkLogByJob(jobId);
+
+            if (log) {
+                if (log.startPhoto) {
+                    console.log('Start photo already uploaded');
+                    Alert.alert('Success', 'Start work process already completed for today.');
+                    onClose();
+                    return;
+                }
+                if (log.startOtpVerified) {
+                    console.log('OTP already verified');
+                    setOtpVerified(true);
+                    setCurrentStep(3);
+                } else if (log.startOtp) {
+                    console.log('OTP already generated:', log.startOtp);
+                    setOtpRequested(true);
+                    setCurrentStep(2);
+                }
+            }
+        } catch (error) {
+            if (error?.response?.status === 404) {
+                console.log('No existing work log for today, starting fresh.');
+            } else {
+                console.error('Error fetching work log:', error);
+            }
+            // It's okay if no log exists, means we start from step 1
+        }
+    };
 
     const handleRequestOtp = async () => {
         setLoading(true);

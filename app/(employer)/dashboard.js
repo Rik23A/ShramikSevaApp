@@ -37,7 +37,41 @@ export default function EmployerDashboard() {
                 getHiredJobs()
             ]);
 
-            setDashboardData(dashboard);
+            // Transform data for mobile structure compatibility
+            const transformedDashboard = {
+                ...dashboard,
+                // UI expects 'applicants', backend sends 'totalApplicants'
+                applicants: dashboard.totalApplicants || 0,
+                // UI expects 'recentApplicants' (grouped by job), backend sends 'recentApplications' (flat list)
+                recentApplicants: []
+            };
+
+            if (dashboard.recentApplications && Array.isArray(dashboard.recentApplications)) {
+                const groupedByJob = {};
+                dashboard.recentApplications.forEach(app => {
+                    const jobId = app.job?._id;
+                    if (!jobId) return;
+
+                    if (!groupedByJob[jobId]) {
+                        groupedByJob[jobId] = {
+                            _id: jobId,
+                            title: app.job?.title || 'Unknown Job',
+                            applicants: []
+                        };
+                    }
+
+                    // Add applicant details to the job group
+                    groupedByJob[jobId].applicants.push({
+                        _id: app.worker?._id,
+                        name: app.worker?.name || 'Unknown',
+                        email: app.worker?.email,
+                        availability: app.worker?.availability
+                    });
+                });
+                transformedDashboard.recentApplicants = Object.values(groupedByJob);
+            }
+
+            setDashboardData(transformedDashboard);
             setAnalyticsData(analytics);
             setHiredJobs(hired);
 
@@ -59,13 +93,22 @@ export default function EmployerDashboard() {
                 const processedActivity = [];
                 activities.forEach(item => {
                     if (item.logs && Array.isArray(item.logs)) {
-                        const today = new Date().toDateString();
-                        // Filter for logs with OTPs or verified status for TODAY only
-                        const activeLogs = item.logs.filter(l => {
-                            const isToday = new Date(l.workDate || l.createdAt).toDateString() === today;
-                            return isToday && (l.startOtp || l.endOtp || l.startOtpVerified || l.endOtpVerified);
+                        // Sort by latest created first
+                        const sortedLogs = item.logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+                        const today = new Date();
+
+                        // Find the latest log for TODAY
+                        const latestTodayLog = sortedLogs.find(l => {
+                            const logDate = new Date(l.workDate || l.createdAt);
+                            return logDate.getDate() === today.getDate() &&
+                                logDate.getMonth() === today.getMonth() &&
+                                logDate.getFullYear() === today.getFullYear();
                         });
-                        activeLogs.forEach(log => {
+
+                        // Only show if we have a log for today that has activity
+                        if (latestTodayLog && (latestTodayLog.startOtp || latestTodayLog.endOtp || latestTodayLog.startOtpVerified || latestTodayLog.endOtpVerified)) {
+                            const log = latestTodayLog;
                             processedActivity.push({
                                 jobId: item.jobId,
                                 jobTitle: item.jobTitle,
@@ -77,7 +120,7 @@ export default function EmployerDashboard() {
                                 endOtpVerified: log.endOtpVerified,
                                 date: log.createdAt
                             });
-                        });
+                        }
                     }
                 });
 

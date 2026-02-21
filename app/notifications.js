@@ -168,6 +168,22 @@ export default function NotificationsScreen() {
         );
     };
 
+    const mapWebUrlToMobileRoute = (url) => {
+        if (!url) return null;
+
+        // Employer: Hired jobs detail mapping
+        // From: /dashboard/employer/hired-jobs/[id]
+        // To: /hired-job-details/[id]
+        const hiredJobsMatch = url.match(/\/dashboard\/employer\/hired-jobs\/([a-f\d]+)/i);
+        if (hiredJobsMatch) {
+            return `/hired-job-details/${hiredJobsMatch[1]}`;
+        }
+
+        // Add other mappings as needed...
+
+        return url;
+    };
+
     const handleNotificationPress = async (item) => {
         if (!item.isRead) {
             await handleMarkAsRead(item._id);
@@ -177,10 +193,24 @@ export default function NotificationsScreen() {
         if (item.type === 'message' || item.type === 'new_message') {
             if (item.relatedId) router.push(`/chat/${item.relatedId}`);
             else if (item.actionUrl) router.push(item.actionUrl);
-        } else if (item.type === 'job_application' || item.type === 'job_hired' || item.type === 'job_rejected') {
+        } else if (item.type === 'job_application') {
+            if (item.relatedId) router.push(`/job/${item.relatedId}/applicants`);
+        } else if (item.type === 'job_hired' || item.type === 'job_rejected') {
             if (item.relatedId) router.push(`/job-details/${item.relatedId}`);
         } else if (item.actionUrl) {
-            router.push(item.actionUrl);
+            const mobileRoute = mapWebUrlToMobileRoute(item.actionUrl);
+            if (mobileRoute) {
+                // Pass workerId if available in metadata
+                const params = {};
+                if (item.metadata && item.metadata.workerId) {
+                    params.workerId = item.metadata.workerId;
+                }
+
+                router.push({
+                    pathname: mobileRoute,
+                    params
+                });
+            }
         }
     };
 

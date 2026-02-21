@@ -14,6 +14,7 @@
     },
     "android": {
       "package": "com.shramikseva.app",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#FF5722",
         "foregroundImage": "./assets/images/icon.png"
@@ -22,7 +23,8 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA"
       ],
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "resize",
+      "windowSoftInputMode": "adjustResize"
     },
     "web": {
       "output": "static",

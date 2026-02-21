@@ -7,26 +7,41 @@ import {
     TouchableOpacity,
     Alert,
     Linking,
+    Modal,
 } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
-import { getProfile, updateProfile } from '../../services/userService';
+import { useLanguage } from '../../context/LanguageContext';
+import { getProfile, updateProfile, getEmployerDashboard } from '../../services/userService';
 import { uploadFile } from '../../services/uploadService';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import EditEmployerProfileModal from '../../components/profile/EditEmployerProfileModal';
 import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
+import DocumentUploadSection from '../../components/profile/DocumentUploadSection';
+import LanguageSelectionModal from '../../components/profile/LanguageSelectionModal';
+import { translations, LANGUAGES } from '../../constants/translations';
 
 export default function EmployerProfileScreen() {
     const { user, logout, updateUser } = useAuth();
+    const { t, locale, changeLanguage } = useLanguage();
     const [profile, setProfile] = useState(null);
+    const [dashboardData, setDashboardData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showEditModal, setShowEditModal] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [showLangModal, setShowLangModal] = useState(false);
+
+    const employerDocTypes = [
+        { label: 'GST Certificate', value: 'gst_certificate' },
+        { label: 'PAN Card', value: 'pan_card' },
+        { label: 'Company Registration', value: 'company_registration' },
+        { label: 'Other', value: 'other' },
+    ];
 
     useEffect(() => {
         fetchProfile();
@@ -34,11 +49,16 @@ export default function EmployerProfileScreen() {
 
     const fetchProfile = async () => {
         try {
-            const data = await getProfile();
-            console.log('Fetched Profile:', JSON.stringify(data, null, 2));
-            setProfile(data);
+            const [profileData, dashboardData] = await Promise.all([
+                getProfile(),
+                getEmployerDashboard()
+            ]);
+
+
+            setProfile(profileData);
+            setDashboardData(dashboardData);
         } catch (error) {
-            console.error('Failed to fetch profile:', error);
+            console.error('Failed to fetch profile/dashboard:', error);
         } finally {
             setLoading(false);
         }
@@ -70,26 +90,19 @@ export default function EmployerProfileScreen() {
 
     const getVerificationBadge = () => {
         const status = profile?.companyDetails?.verificationStatus || 'pending';
-        console.log('Verification Status:', status);
+
         const config = {
-            pending: { icon: 'time-outline', color: COLORS.warning, text: 'Verification Pending' },
-            verified: { icon: 'shield-checkmark', color: COLORS.success, text: 'Verified Company' },
-            rejected: { icon: 'close-circle-outline', color: COLORS.danger, text: 'Verification Rejected' },
+            pending: { icon: 'time-outline', color: COLORS.warning, text: t('pending') },
+            verified: { icon: 'shield-checkmark', color: COLORS.success, text: t('verified') || 'Verified' },
+            rejected: { icon: 'close-circle-outline', color: COLORS.danger, text: t('rejected') || 'Rejected' },
         };
-        return config[status];
+        return config[status] || config.pending;
     };
 
     const handleImageSelected = async (imageAsset) => {
         setUploading(true);
         try {
-            const formData = new FormData();
-            formData.append('file', {
-                uri: imageAsset.uri,
-                type: 'image/jpeg',
-                name: 'company-logo.jpg',
-            });
-
-            const uploadResult = await uploadFile(formData);
+            const uploadResult = await uploadFile(imageAsset);
             await updateProfile({ profilePicture: uploadResult.fileUrl });
 
             setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
@@ -113,6 +126,11 @@ export default function EmployerProfileScreen() {
         }
     };
 
+    const handleLanguageChange = (langCode) => {
+        changeLanguage(langCode);
+        setShowLangModal(false);
+    };
+
     if (loading) {
         return <LoadingSpinner fullScreen message="Loading profile..." />;
     }
@@ -128,10 +146,15 @@ export default function EmployerProfileScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    title: 'My Profile',
+                    title: t('nav_profile'),
                     headerStyle: { backgroundColor: COLORS.primary },
                     headerTintColor: COLORS.white,
                     headerShadowVisible: false,
+                    headerRight: () => (
+                        <TouchableOpacity onPress={() => setShowLangModal(true)} style={{ marginRight: 10 }}>
+                            <Ionicons name="language" size={24} color={COLORS.white} />
+                        </TouchableOpacity>
+                    ),
                 }}
             />
 
@@ -160,27 +183,42 @@ export default function EmployerProfileScreen() {
                         )}
                     </View>
 
-                    <Text style={styles.companyName}>{profile?.companyName || 'Company Name'}</Text>
+                    <Text style={styles.companyName}>{profile?.companyName || t('company_name')}</Text>
                     <Text style={styles.ownerName}>{profile?.name}</Text>
+
+                    {profile?.bio && (
+                        <Text style={styles.bioText}>{profile.bio}</Text>
+                    )}
+
+                    {profile?.gender && (
+                        <View style={styles.genderContainer}>
+                            <Ionicons name={profile.gender === 'Male' ? 'male' : profile.gender === 'Female' ? 'female' : 'person'} size={14} color={COLORS.textSecondary} />
+                            <Text style={styles.genderText}>{t('gender')}: {profile.gender}</Text>
+                        </View>
+                    )}
+
+                    <View style={styles.ratingHeader}>
+                        <Ionicons name="star" size={16} color="#FFD700" />
+                        <Text style={styles.ratingText}>{profile?.rating?.toFixed(1) || '0.0'}</Text>
+                    </View>
 
                     {/* Quick Stats Grid */}
                     <View style={styles.statsGrid}>
                         <View style={styles.statItem}>
-                            <Text style={styles.statNumber}>{profile?.stats?.totalJobs || 0}</Text>
-                            <Text style={styles.statLabel}>Jobs</Text>
+                            <Text style={styles.statNumber}>{dashboardData?.activeJobs ?? profile?.stats?.totalJobs ?? 0}</Text>
+                            <Text style={styles.statLabel}>{t('nav_jobs')}</Text>
                         </View>
                         <View style={styles.verticalDivider} />
                         <View style={styles.statItem}>
-                            <Text style={styles.statNumber}>{profile?.stats?.totalHires || 0}</Text>
-                            <Text style={styles.statLabel}>Hires</Text>
+                            <Text style={styles.statNumber}>{dashboardData?.totalApplicants ?? profile?.stats?.totalApplicants ?? 0}</Text>
+                            <Text style={styles.statLabel}>{t('total_applicants') || 'Applicants'}</Text>
                         </View>
                         <View style={styles.verticalDivider} />
                         <View style={styles.statItem}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                <Text style={styles.statNumber}>{profile?.rating?.toFixed(1) || '0.0'}</Text>
-                                <Ionicons name="star" size={14} color="#FFD700" />
+                                <Text style={styles.statNumber}>{dashboardData?.hires ?? profile?.stats?.totalHires ?? 0}</Text>
                             </View>
-                            <Text style={styles.statLabel}>Rating</Text>
+                            <Text style={styles.statLabel}>{t('hired') || 'Hired'}</Text>
                         </View>
                     </View>
 
@@ -190,8 +228,14 @@ export default function EmployerProfileScreen() {
                         onPress={() => setShowEditModal(true)}
                     >
                         <Ionicons name="create-outline" size={18} color={COLORS.primary} />
-                        <Text style={styles.editButtonText}>Edit Profile</Text>
+                        <Text style={styles.editButtonText}>{t('edit_profile')}</Text>
                     </TouchableOpacity>
+
+                    {companyDetails.description && (
+                        <View style={styles.companyDescription}>
+                            <Text style={styles.descriptionText}>{companyDetails.description}</Text>
+                        </View>
+                    )}
                 </Animated.View>
 
                 {/* Subscription Status Card */}
@@ -202,32 +246,29 @@ export default function EmployerProfileScreen() {
                                 <Ionicons name="diamond" size={20} color={COLORS.primary} />
                             </View>
                             <View style={styles.subscriptionInfo}>
-                                <Text style={styles.subscriptionPlan}>{profile.subscription.plan || 'Free'} Plan</Text>
+                                <Text style={styles.subscriptionPlan}>{profile.subscription.plan || 'Free'} {t('plan') || 'Plan'}</Text>
                                 <Text style={styles.subscriptionStatus}>
-                                    {profile.subscription.status === 'active' ? 'Active' : 'Inactive'}
+                                    {profile.subscription.status === 'active' ? (t('active') || 'Active') : (t('inactive') || 'Inactive')}
                                 </Text>
                             </View>
                             <TouchableOpacity
                                 style={styles.upgradeButton}
                                 onPress={() => router.push('/(employer)/subscription-plans')}
                             >
-                                <Text style={styles.upgradeButtonText}>Manage</Text>
+                                <Text style={styles.upgradeButtonText}>{t('manage') || 'Manage'}</Text>
                             </TouchableOpacity>
                         </View>
                         <View style={styles.subscriptionLimits}>
                             <View style={styles.limitItem}>
-                                <Text style={styles.limitLabel}>Jobs Posted</Text>
+                                <Text style={styles.limitLabel}>{t('nav_jobs')}</Text>
                                 <Text style={styles.limitValue}>
-                                    {profile.subscription.jobsPosted || 0}/{profile.subscription.jobLimit || '∞'}
+                                    {dashboardData?.activeJobs || 0}/{profile.subscription.maxActiveJobs || 1}
                                 </Text>
                             </View>
                             <View style={styles.limitItem}>
-                                <Text style={styles.limitLabel}>Valid Until</Text>
+                                <Text style={styles.limitLabel}>{t('database_unlocks')}</Text>
                                 <Text style={styles.limitValue}>
-                                    {profile.subscription.expiryDate
-                                        ? new Date(profile.subscription.expiryDate).toLocaleDateString()
-                                        : 'N/A'
-                                    }
+                                    {profile.subscription.databaseUnlocksUsed || 0}/{profile.subscription.maxDatabaseUnlocks || 0}
                                 </Text>
                             </View>
                         </View>
@@ -240,15 +281,15 @@ export default function EmployerProfileScreen() {
                         <View style={styles.alertContent}>
                             <Ionicons name="information-circle" size={24} color={COLORS.warning} />
                             <View style={styles.alertTextContainer}>
-                                <Text style={styles.alertTitle}>Complete Your Profile</Text>
-                                <Text style={styles.alertSubtitle}>Add details to build trust with workers</Text>
+                                <Text style={styles.alertTitle}>{t('complete_profile_title') || 'Complete Your Profile'}</Text>
+                                <Text style={styles.alertSubtitle}>{t('complete_profile_subtitle') || 'Add details to build trust with workers'}</Text>
                             </View>
                         </View>
                         <TouchableOpacity
                             style={styles.alertAction}
-                            onPress={() => Alert.alert('Coming Soon', 'Edit profile feature coming soon!')}
+                            onPress={() => setShowEditModal(true)}
                         >
-                            <Text style={styles.alertActionText}>Complete Now</Text>
+                            <Text style={styles.alertActionText}>{t('complete_now') || 'Complete Now'}</Text>
                             <Ionicons name="arrow-forward" size={16} color={COLORS.warning} />
                         </TouchableOpacity>
                     </Animated.View>
@@ -256,7 +297,53 @@ export default function EmployerProfileScreen() {
 
                 {/* Menu / Info Sections */}
                 <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionHeader}>Company Details</Text>
+                    <Text style={styles.sectionHeader}>{t('personal_info') || 'Personal Information'}</Text>
+                    <View style={styles.menuCard}>
+                        <View style={styles.menuItem}>
+                            <View style={[styles.menuIcon, { backgroundColor: '#E3F2FD' }]}>
+                                <Ionicons name="person" size={20} color={COLORS.primary} />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('full_name')}</Text>
+                                <Text style={styles.menuValue}>{profile?.name}</Text>
+                            </View>
+                        </View>
+                        <View style={styles.menuItem}>
+                            <View style={[styles.menuIcon, { backgroundColor: '#E0F2F1' }]}>
+                                <Ionicons name="call" size={20} color="#009688" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('mobile')}</Text>
+                                <Text style={styles.menuValue}>+91 {profile?.mobile}</Text>
+                            </View>
+                        </View>
+                        {profile?.email && (
+                            <View style={styles.menuItem}>
+                                <View style={[styles.menuIcon, { backgroundColor: '#FFEBEE' }]}>
+                                    <Ionicons name="mail" size={20} color="#F44336" />
+                                </View>
+                                <View style={styles.menuContent}>
+                                    <Text style={styles.menuLabel}>{t('email')}</Text>
+                                    <Text style={styles.menuValue}>{profile.email}</Text>
+                                </View>
+                            </View>
+                        )}
+                        {profile?.gender && (
+                            <View style={[styles.menuItem, { borderBottomWidth: 0 }]}>
+                                <View style={[styles.menuIcon, { backgroundColor: '#F3E5F5' }]}>
+                                    <Ionicons name={profile.gender === 'Male' ? 'male' : profile.gender === 'Female' ? 'female' : 'person'} size={20} color="#9C27B0" />
+                                </View>
+                                <View style={styles.menuContent}>
+                                    <Text style={styles.menuLabel}>{t('gender')}</Text>
+                                    <Text style={styles.menuValue}>{profile.gender}</Text>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                </View>
+
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionHeader}>{t('company_details') || 'Company Details'}</Text>
 
                     <View style={styles.menuCard}>
                         <View style={styles.menuItem}>
@@ -264,8 +351,8 @@ export default function EmployerProfileScreen() {
                                 <Ionicons name="briefcase" size={20} color={COLORS.primary} />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuLabel}>Business Type</Text>
-                                <Text style={styles.menuValue}>{profile?.businessType || 'Not specified'}</Text>
+                                <Text style={styles.menuLabel}>{t('business_type')}</Text>
+                                <Text style={styles.menuValue}>{profile?.businessType || t('not_specified')}</Text>
                             </View>
                         </View>
                         <View style={styles.menuItem}>
@@ -273,10 +360,21 @@ export default function EmployerProfileScreen() {
                                 <Ionicons name="people" size={20} color={COLORS.success} />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuLabel}>Employees</Text>
-                                <Text style={styles.menuValue}>{companyDetails.employeeCount || 'Not specified'}</Text>
+                                <Text style={styles.menuLabel}>{t('employee_count')}</Text>
+                                <Text style={styles.menuValue}>{companyDetails.employeeCount || t('not_specified')}</Text>
                             </View>
                         </View>
+                        {companyDetails.foundedYear && (
+                            <View style={styles.menuItem}>
+                                <View style={[styles.menuIcon, { backgroundColor: '#FFF9C4' }]}>
+                                    <Ionicons name="calendar-outline" size={20} color="#FBC02D" />
+                                </View>
+                                <View style={styles.menuContent}>
+                                    <Text style={styles.menuLabel}>{t('founded_year')}</Text>
+                                    <Text style={styles.menuValue}>{companyDetails.foundedYear}</Text>
+                                </View>
+                            </View>
+                        )}
                         {companyDetails.website && (
                             <TouchableOpacity
                                 style={[styles.menuItem, { borderBottomWidth: 0 }]}
@@ -286,55 +384,72 @@ export default function EmployerProfileScreen() {
                                     <Ionicons name="globe" size={20} color="#9C27B0" />
                                 </View>
                                 <View style={styles.menuContent}>
-                                    <Text style={styles.menuLabel}>Website</Text>
+                                    <Text style={styles.menuLabel}>{t('website')}</Text>
                                     <Text style={[styles.menuValue, { color: COLORS.primary }]}>{companyDetails.website}</Text>
                                 </View>
                                 <Ionicons name="open-outline" size={16} color={COLORS.textSecondary} />
                             </TouchableOpacity>
+                        )}
+                        {profile?.gstNumber && (
+                            <View style={[styles.menuItem, { borderBottomWidth: 0 }]}>
+                                <View style={[styles.menuIcon, { backgroundColor: '#E0F7FA' }]}>
+                                    <Ionicons name="document-text" size={20} color="#00ACC1" />
+                                </View>
+                                <View style={styles.menuContent}>
+                                    <Text style={styles.menuLabel}>{t('gst_number')}</Text>
+                                    <Text style={styles.menuValue}>{profile.gstNumber}</Text>
+                                </View>
+                            </View>
                         )}
                     </View>
                 </View>
 
                 {/* Contact Section */}
                 <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionHeader}>Contact Information</Text>
+                    <Text style={styles.sectionHeader}>{t('contact_info')}</Text>
                     <View style={styles.menuCard}>
                         <View style={styles.menuItem}>
                             <View style={[styles.menuIcon, { backgroundColor: '#FFF3E0' }]}>
                                 <Ionicons name="person" size={20} color={COLORS.warning} />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuLabel}>Contact Person</Text>
-                                <Text style={styles.menuValue}>{contactPerson.name || 'Not specified'}</Text>
+                                <Text style={styles.menuLabel}>{t('contact_person')}</Text>
+                                <Text style={styles.menuValue}>
+                                    {contactPerson.name || t('not_specified')}
+                                    {contactPerson.designation ? ` (${contactPerson.designation})` : ''}
+                                </Text>
                             </View>
                         </View>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => Linking.openURL(`tel:+91${profile?.mobile}`)}>
-                            <View style={[styles.menuIcon, { backgroundColor: '#E0F2F1' }]}>
-                                <Ionicons name="call" size={20} color="#009688" />
-                            </View>
-                            <View style={styles.menuContent}>
-                                <Text style={styles.menuLabel}>Mobile</Text>
-                                <Text style={styles.menuValue}>+91 {profile?.mobile}</Text>
-                            </View>
-                        </TouchableOpacity>
-                        {profile?.email && (
-                            <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={() => Linking.openURL(`mailto:${profile?.email}`)}>
+                        {contactPerson.phone && (
+                            <TouchableOpacity style={styles.menuItem} onPress={() => Linking.openURL(`tel:+91${contactPerson.phone}`)}>
+                                <View style={[styles.menuIcon, { backgroundColor: '#E0F2F1' }]}>
+                                    <Ionicons name="call" size={20} color="#009688" />
+                                </View>
+                                <View style={styles.menuContent}>
+                                    <Text style={styles.menuLabel}>{t('mobile')}</Text>
+                                    <Text style={styles.menuValue}>+91 {contactPerson.phone}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        )}
+                        {contactPerson.email && (
+                            <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={() => Linking.openURL(`mailto:${contactPerson.email}`)}>
                                 <View style={[styles.menuIcon, { backgroundColor: '#FFEBEE' }]}>
                                     <Ionicons name="mail" size={20} color="#F44336" />
                                 </View>
                                 <View style={styles.menuContent}>
-                                    <Text style={styles.menuLabel}>Email</Text>
-                                    <Text style={styles.menuValue}>{profile?.email}</Text>
+                                    <Text style={styles.menuLabel}>{t('email')}</Text>
+                                    <Text style={styles.menuValue}>{contactPerson.email}</Text>
                                 </View>
                             </TouchableOpacity>
                         )}
                     </View>
                 </View>
 
+
                 {/* Address Section */}
                 {(address.city || address.state) && (
                     <View style={styles.sectionContainer}>
-                        <Text style={styles.sectionHeader}>Location</Text>
+                        <Text style={styles.sectionHeader}>{t('location')}</Text>
                         <View style={styles.menuCard}>
                             <View style={[styles.menuItem, { borderBottomWidth: 0, alignItems: 'center' }]}>
                                 <View style={[styles.menuIcon, { backgroundColor: '#EFEBE9' }]}>
@@ -351,7 +466,7 @@ export default function EmployerProfileScreen() {
                                     style={styles.mapAction}
                                     onPress={() => openMapsLink(address.mapsLink)}
                                 >
-                                    <Text style={styles.mapActionText}>View on Maps</Text>
+                                    <Text style={styles.mapActionText}>{t('view_on_maps') || 'View on Maps'}</Text>
                                     <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
                                 </TouchableOpacity>
                             )}
@@ -359,9 +474,12 @@ export default function EmployerProfileScreen() {
                     </View>
                 )}
 
+                {/* Documents Section */}
+                <DocumentUploadSection docTypes={employerDocTypes} />
+
                 {/* Account Actions */}
                 <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionHeader}>Settings</Text>
+                    <Text style={styles.sectionHeader}>{t('quick_actions') || 'Settings'}</Text>
                     <View style={styles.menuCard}>
                         <TouchableOpacity
                             style={styles.menuItem}
@@ -371,20 +489,20 @@ export default function EmployerProfileScreen() {
                                 <Ionicons name="receipt-outline" size={20} color="#9C27B0" />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuValue}>Invoices & Billing</Text>
+                                <Text style={styles.menuValue}>{t('nav_billing') || 'Invoices & Billing'}</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
 
                         <TouchableOpacity
                             style={styles.menuItem}
-                            onPress={() => Alert.alert('Coming Soon', 'Edit profile feature coming soon!')}
+                            onPress={() => setShowEditModal(true)}
                         >
                             <View style={[styles.menuIcon, { backgroundColor: '#F5F5F5' }]}>
                                 <Ionicons name="create-outline" size={20} color={COLORS.text} />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuValue}>Edit Profile</Text>
+                                <Text style={styles.menuValue}>{t('edit_profile')}</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
@@ -397,7 +515,7 @@ export default function EmployerProfileScreen() {
                                 <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={[styles.menuValue, { color: COLORS.danger }]}>Logout</Text>
+                                <Text style={[styles.menuValue, { color: COLORS.danger }]}>{t('logout')}</Text>
                             </View>
                         </TouchableOpacity>
                     </View>
@@ -412,6 +530,15 @@ export default function EmployerProfileScreen() {
                 onClose={() => setShowEditModal(false)}
                 profile={profile}
                 onSave={handleSaveProfile}
+            />
+
+            {/* Language Selection Modal */}
+            <LanguageSelectionModal
+                visible={showLangModal}
+                onClose={() => setShowLangModal(false)}
+                onSelect={handleLanguageChange}
+                currentLocale={locale}
+                t={t}
             />
         </View>
     );
@@ -430,7 +557,7 @@ const styles = StyleSheet.create({
         height: 120,
         borderBottomLeftRadius: 30,
         borderBottomRightRadius: 30,
-        marginBottom: -60,
+        marginBottom: -95,
     },
     profileCard: {
         backgroundColor: COLORS.white,
@@ -487,7 +614,48 @@ const styles = StyleSheet.create({
     ownerName: {
         fontSize: 14,
         color: COLORS.textSecondary,
+        marginBottom: 10,
+    },
+    bioText: {
+        fontSize: 14,
+        color: COLORS.text,
+        textAlign: 'center',
+        marginBottom: 10,
+        paddingHorizontal: 20,
+        fontStyle: 'italic',
+    },
+    genderContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.background,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
         marginBottom: 20,
+        gap: 4,
+    },
+    genderText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    ratingHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FFFDE7',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        marginBottom: 15,
+        alignSelf: 'center',
+        gap: 4,
+        borderWidth: 1,
+        borderColor: '#FFF59D',
+    },
+    ratingText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: COLORS.text,
     },
     statsGrid: {
         flexDirection: 'row',
@@ -704,5 +872,68 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
         color: COLORS.text,
+    },
+    companyDescription: {
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+        width: '100%',
+    },
+    descriptionText: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        lineHeight: 20,
+        fontStyle: 'italic',
+        textAlign: 'center',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: COLORS.white,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 24,
+        paddingBottom: 40,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: COLORS.text,
+    },
+    langOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    selectedLang: {
+        backgroundColor: '#F0F7FF',
+        marginHorizontal: -24,
+        paddingHorizontal: 24,
+        borderBottomColor: 'transparent',
+    },
+    langIcon: {
+        fontSize: 24,
+        marginRight: 16,
+    },
+    langLabel: {
+        fontSize: 16,
+        color: COLORS.text,
+        flex: 1,
+    },
+    selectedLangText: {
+        color: COLORS.primary,
+        fontWeight: '600',
     },
 });

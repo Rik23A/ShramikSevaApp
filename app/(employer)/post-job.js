@@ -17,14 +17,16 @@ import Card from '../../components/ui/Card';
 import LocationPicker from '../../components/LocationPicker';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import AnimatedModal from '../../components/ui/AnimatedModal';
+import SelectionModal from '../../components/ui/SelectionModal';
 import { COLORS, WORKER_TYPES, WORK_TYPES, WORKER_SKILLS } from '../../constants/config';
 import { createJob } from '../../services/jobService';
-import { canPostJob } from '../../services/subscriptionService';
+import { canPostJob, getSubscriptionPlans } from '../../services/subscriptionService';
 
 export default function PostJobScreen() {
     const [loading, setLoading] = useState(false);
     const [checkingSubscription, setCheckingSubscription] = useState(true);
     const [subscriptionInfo, setSubscriptionInfo] = useState(null);
+    const [availablePlans, setAvailablePlans] = useState([]);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
     const [modalConfig, setModalConfig] = useState({
         type: 'subscription',
@@ -50,13 +52,24 @@ export default function PostJobScreen() {
         geoTaggingRequired: false,
     });
     const [errors, setErrors] = useState({});
-    const [showWorkerTypes, setShowWorkerTypes] = useState(false);
-    const [showSkillsDropdown, setShowSkillsDropdown] = useState(false);
+    const [showWorkerModal, setShowWorkerModal] = useState(false);
+    const [showSkillsModal, setShowSkillsModal] = useState(false);
 
     // Check subscription status on mount
     useEffect(() => {
         checkSubscription();
+        fetchPlans();
     }, []);
+
+    const fetchPlans = async () => {
+        try {
+            const plans = await getSubscriptionPlans();
+            // Filter out addons for quick selection
+            setAvailablePlans(plans.filter(p => !p.isAddon));
+        } catch (error) {
+            console.error('Error fetching plans:', error);
+        }
+    };
 
     const checkSubscription = async () => {
         try {
@@ -125,7 +138,7 @@ export default function PostJobScreen() {
         if (formData.workType === 'temporary' && !formData.durationDays) {
             newErrors.durationDays = 'Duration is required for temporary jobs';
         }
-        if (formData.workerType.length === 0) newErrors.workerType = 'Select at least one worker type';
+        if (formData.workerType.length === 0) newErrors.workerType = 'Select a worker type';
 
         if (formData.minExperience && isNaN(formData.minExperience)) newErrors.minExperience = 'Must be a number';
         if (formData.maxExperience && isNaN(formData.maxExperience)) newErrors.maxExperience = 'Must be a number';
@@ -180,31 +193,15 @@ export default function PostJobScreen() {
         }
     };
 
-    const toggleWorkerType = (type) => {
-        const types = [...formData.workerType];
-        const index = types.indexOf(type);
-        if (index > -1) {
-            types.splice(index, 1);
-        } else {
-            types.push(type);
-        }
-        setFormData({ ...formData, workerType: types });
+    const handleWorkerTypeSelect = (type) => {
+        setFormData({ ...formData, workerType: [type], skills: '' }); // Clear skills when worker type changes
         setErrors({ ...errors, workerType: '' });
     };
 
-    const toggleSkill = (skill) => {
-        const currentSkills = formData.skills ? formData.skills.split(', ').filter(Boolean) : [];
-        const index = currentSkills.indexOf(skill);
-
-        let newSkills;
-        if (index > -1) {
-            newSkills = currentSkills.filter(s => s !== skill);
-        } else {
-            newSkills = [...currentSkills, skill];
-        }
-
-        setFormData({ ...formData, skills: newSkills.join(', ') });
+    const handleSkillsSelect = (skills) => {
+        setFormData({ ...formData, skills: skills.join(', ') });
     };
+
 
     const getSuggestedSkills = () => {
         if (!formData.workerType || formData.workerType.length === 0) return [];
@@ -258,44 +255,71 @@ export default function PostJobScreen() {
                             </View>
                         </View>
 
-                        {/* Quick Plan Options */}
-                        <View style={styles.quickPlansContainer}>
-                            <TouchableOpacity
-                                style={styles.quickPlanCard}
-                                onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
-                            >
-                                <Ionicons name="flash" size={24} color={COLORS.secondary} />
-                                <Text style={styles.quickPlanName}>1 Month</Text>
-                                <Text style={styles.quickPlanPrice}>₹2,350</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[styles.quickPlanCard, styles.quickPlanCardPopular]}
-                                onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
-                            >
-                                <View style={styles.popularTag}>
-                                    <Text style={styles.popularTagText}>BEST</Text>
+                        {/* Current Status Details if available */}
+                        {subscriptionInfo.subscription && (
+                            <View style={styles.currentStatusContainer}>
+                                <View style={styles.statusRow}>
+                                    <Text style={styles.statusLabel}>Current Plan:</Text>
+                                    <Text style={styles.statusValue}>{subscriptionInfo.subscription.name}</Text>
                                 </View>
-                                <Ionicons name="star" size={24} color={COLORS.white} />
-                                <Text style={[styles.quickPlanName, styles.quickPlanNameWhite]}>3 Months</Text>
-                                <Text style={[styles.quickPlanPrice, styles.quickPlanPriceWhite]}>₹4,200</Text>
-                            </TouchableOpacity>
+                                {subscriptionInfo.reason === 'limit_reached' && (
+                                    <View style={styles.statusRow}>
+                                        <Text style={styles.statusLabel}>Active Jobs:</Text>
+                                        <Text style={styles.statusValue}>{subscriptionInfo.subscription.activeJobsCount} / {subscriptionInfo.subscription.maxActiveJobs}</Text>
+                                    </View>
+                                )}
+                                <View style={styles.statusRow}>
+                                    <Text style={styles.statusLabel}>Remaining Time:</Text>
+                                    <Text style={styles.statusValue}>{subscriptionInfo.subscription.daysRemaining} days</Text>
+                                </View>
 
-                            <TouchableOpacity
-                                style={styles.quickPlanCard}
-                                onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
-                            >
-                                <Ionicons name="diamond" size={24} color={COLORS.secondary} />
-                                <Text style={styles.quickPlanName}>1 Year</Text>
-                                <Text style={styles.quickPlanPrice}>₹7,500</Text>
-                            </TouchableOpacity>
+                                <View style={styles.progressBarWrapper}>
+                                    <View
+                                        style={[
+                                            styles.progressBar,
+                                            { width: `${(subscriptionInfo.subscription.activeJobsCount / subscriptionInfo.subscription.maxActiveJobs) * 100}%` }
+                                        ]}
+                                    />
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Dynamic Quick Plan Options */}
+                        <View style={styles.quickPlansContainer}>
+                            {availablePlans.slice(0, 3).map((plan, index) => (
+                                <TouchableOpacity
+                                    key={plan.planKey || index}
+                                    style={[
+                                        styles.quickPlanCard,
+                                        plan.planKey === 'pro' && styles.quickPlanCardPopular // Mark 90 days plan as popular
+                                    ]}
+                                    onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
+                                >
+                                    {plan.planKey === 'pro' && (
+                                        <View style={styles.popularTag}>
+                                            <Text style={styles.popularTagText}>BEST VALUE</Text>
+                                        </View>
+                                    )}
+                                    <Ionicons
+                                        name={index === 0 ? 'flash' : index === 1 ? 'star' : 'rocket'}
+                                        size={24}
+                                        color={plan.planKey === 'pro' ? COLORS.white : COLORS.secondary}
+                                    />
+                                    <Text style={[styles.quickPlanName, plan.planKey === 'pro' && styles.quickPlanNameWhite]}>
+                                        {plan.name.replace(' Plan', '')}
+                                    </Text>
+                                    <Text style={[styles.quickPlanPrice, plan.planKey === 'pro' && styles.quickPlanPriceWhite]}>
+                                        ₹{plan.price}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
                         </View>
 
                         <TouchableOpacity
                             style={styles.viewAllPlansBtn}
                             onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
                         >
-                            <Text style={styles.viewAllPlansText}>View All Plans</Text>
+                            <Text style={styles.viewAllPlansText}>Choose Other Plans</Text>
                             <Ionicons name="arrow-forward" size={18} color={COLORS.secondary} />
                         </TouchableOpacity>
                     </View>
@@ -335,35 +359,16 @@ export default function PostJobScreen() {
                         <Text style={styles.label}>Worker Type Required</Text>
                         <TouchableOpacity
                             style={[styles.dropdown, errors.workerType && styles.dropdownError]}
-                            onPress={() => setShowWorkerTypes(!showWorkerTypes)}
+                            onPress={() => setShowWorkerModal(true)}
                         >
                             <Text style={formData.workerType.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
                                 {formData.workerType.length > 0
-                                    ? formData.workerType.join(', ').substring(0, 40) + '...'
-                                    : 'Select worker type(s)'}
+                                    ? formData.workerType[0]
+                                    : 'Select worker type'}
                             </Text>
-                            <Ionicons name={showWorkerTypes ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
+                            <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
                         {errors.workerType && <Text style={styles.errorText}>{errors.workerType}</Text>}
-
-                        {showWorkerTypes && (
-                            <View style={styles.typesList}>
-                                {WORKER_TYPES.map((type, index) => (
-                                    <TouchableOpacity
-                                        key={index}
-                                        style={[styles.typeItem, formData.workerType.includes(type) && styles.typeItemSelected]}
-                                        onPress={() => toggleWorkerType(type)}
-                                    >
-                                        <Text style={[styles.typeText, formData.workerType.includes(type) && styles.typeTextSelected]}>
-                                            {type}
-                                        </Text>
-                                        {formData.workerType.includes(type) && (
-                                            <Ionicons name="checkmark" size={18} color={COLORS.white} />
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        )}
                     </View>
 
                     {/* Skills Selection (Dropdown) */}
@@ -376,7 +381,7 @@ export default function PostJobScreen() {
                                     Alert.alert('Select Worker Type', 'Please select a worker type first to see relevant skills.');
                                     return;
                                 }
-                                setShowSkillsDropdown(!showSkillsDropdown);
+                                setShowSkillsModal(true);
                             }}
                         >
                             <Text style={formData.skills.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
@@ -384,36 +389,8 @@ export default function PostJobScreen() {
                                     ? formData.skills
                                     : 'Select required skills'}
                             </Text>
-                            <Ionicons name={showSkillsDropdown ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
+                            <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
-
-                        {showSkillsDropdown && (
-                            <View style={styles.typesList}>
-                                {getSuggestedSkills().length > 0 ? (
-                                    getSuggestedSkills().map((skill, index) => {
-                                        const isSelected = formData.skills.split(', ').includes(skill);
-                                        return (
-                                            <TouchableOpacity
-                                                key={index}
-                                                style={[styles.typeItem, isSelected && styles.typeItemSelected]}
-                                                onPress={() => toggleSkill(skill)}
-                                            >
-                                                <Text style={[styles.typeText, isSelected && styles.typeTextSelected]}>
-                                                    {skill}
-                                                </Text>
-                                                {isSelected && (
-                                                    <Ionicons name="checkmark" size={18} color={COLORS.white} />
-                                                )}
-                                            </TouchableOpacity>
-                                        );
-                                    })
-                                ) : (
-                                    <View style={styles.noSkillsContainer}>
-                                        <Text style={styles.noSkillsText}>No specific skills found for selected worker types.</Text>
-                                    </View>
-                                )}
-                            </View>
-                        )}
                     </View>
 
                     <Input
@@ -544,6 +521,28 @@ export default function PostJobScreen() {
                 onPrimaryPress={handleModalPrimaryPress}
                 onSecondaryPress={handleModalClose}
                 onClose={handleModalClose}
+            />
+
+            {/* Worker Type Selection Modal */}
+            <SelectionModal
+                visible={showWorkerModal}
+                title="Select Worker Type"
+                options={WORKER_TYPES}
+                selectedValue={formData.workerType[0]}
+                onSelect={handleWorkerTypeSelect}
+                onClose={() => setShowWorkerModal(false)}
+                multiSelect={false}
+            />
+
+            {/* Skills Selection Modal */}
+            <SelectionModal
+                visible={showSkillsModal}
+                title="Select Required Skills"
+                options={getSuggestedSkills()}
+                selectedValue={formData.skills ? formData.skills.split(', ') : []}
+                onSelect={handleSkillsSelect}
+                onClose={() => setShowSkillsModal(false)}
+                multiSelect={true}
             />
         </KeyboardAvoidingView>
     );
@@ -701,6 +700,41 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#9CA3AF',
         lineHeight: 18,
+    },
+    currentStatusContainer: {
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    statusRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    statusLabel: {
+        fontSize: 13,
+        color: '#9CA3AF',
+    },
+    statusValue: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#FFFFFF',
+    },
+    progressBarWrapper: {
+        height: 6,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 3,
+        marginTop: 8,
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        backgroundColor: COLORS.secondary,
+        borderRadius: 3,
     },
     quickPlansContainer: {
         flexDirection: 'row',

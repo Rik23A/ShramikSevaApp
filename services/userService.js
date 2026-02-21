@@ -65,3 +65,15 @@ export const unlockWorkerProfile = async (workerId) => {
     const response = await API.post(`/users/workers/${workerId}/unlock`);
     return response.data;
 };
+
+// Get user documents
+export const getUserDocuments = async () => {
+    const response = await API.get('/documents');
+    return response.data;
+};
+
+// Upload document metadata
+export const uploadDocument = async (documentData) => {
+    const response = await API.post('/documents', documentData);
+    return response.data;
+};

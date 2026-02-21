@@ -8,13 +8,15 @@ import {
     Alert,
     ActivityIndicator,
     Platform,
+    Modal,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
 import * as Haptics from 'expo-haptics';
-import { uploadImage } from '../../services/uploadService';
+import { uploadFile } from '../../services/uploadService';
+import ViewShot from 'react-native-view-shot';
 
 /**
  * Photo Capture Component
@@ -27,11 +29,18 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
     const [location, setLocation] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [showCamera, setShowCamera] = useState(false);
+    const [facing, setFacing] = useState('back');
     const cameraRef = useRef(null);
+    const viewShotRef = useRef(null);
 
     useEffect(() => {
         requestLocationPermission();
     }, []);
+
+    const toggleCameraFacing = () => {
+        setFacing(current => (current === 'back' ? 'front' : 'back'));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
 
     const requestLocationPermission = async () => {
         try {
@@ -64,14 +73,20 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
             return {
                 latitude: loc.coords.latitude,
                 longitude: loc.coords.longitude,
+                accuracy: loc.coords.accuracy,
+                timestamp: loc.timestamp || Date.now(),
                 address: address[0] ?
-                    `${address[0].street || ''}, ${address[0].city || ''}, ${address[0].region || ''}`.trim() :
+                    `${address[0].street || ''}, ${address[0].city || ''}, ${address[0].region || ''}, ${address[0].postalCode || ''}`.trim() :
                     'Unknown location',
             };
         } catch (error) {
             console.error('Error getting location:', error);
             throw new Error('Failed to get current location');
         }
+    };
+
+    const formatTimestamp = (timestamp) => {
+        return new Date(timestamp).toLocaleString();
     };
 
     const handleOpenCamera = async () => {
@@ -133,15 +148,29 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
 
         setUploading(true);
         try {
+            // Capture the view with overlay
+            const watermarkedUri = await viewShotRef.current.capture();
+
             // Upload image to server
-            const photoUrl = await uploadImage(capturedPhoto, 'worklog');
+            // Construct a file object that uploadFile expects
+            const fileObj = {
+                uri: watermarkedUri,
+                type: 'image/jpeg',
+                name: `worklog-${type}-${Date.now()}.jpg`
+            };
+
+            const result = await uploadFile(fileObj);
+            const photoUrl = result.fileUrl;
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
             // Call parent callback with photo URL and location
             onPhotoUploaded({
                 photoUrl,
-                location,
+                location: {
+                    ...location,
+                    timestamp: location.timestamp
+                },
             });
         } catch (error) {
             console.error('Error uploading photo:', error);
@@ -152,112 +181,146 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
         }
     };
 
-    if (showCamera) {
-        return (
-            <View style={styles.cameraContainer}>
-                <CameraView
-                    ref={cameraRef}
-                    style={styles.camera}
-                    facing="back"
-                >
-                    <View style={styles.cameraOverlay}>
-                        <View style={styles.cameraHeader}>
-                            <TouchableOpacity
-                                style={styles.closeButton}
-                                onPress={() => setShowCamera(false)}
-                            >
-                                <Ionicons name="close" size={28} color={COLORS.white} />
-                            </TouchableOpacity>
-                            <Text style={styles.cameraTitle}>
-                                {type === 'start' ? 'Start Work Photo' : 'End Work Photo'}
-                            </Text>
-                        </View>
-
-                        <View style={styles.cameraFooter}>
-                            <View style={styles.captureButtonContainer}>
-                                <TouchableOpacity
-                                    style={styles.captureButton}
-                                    onPress={handleTakePhoto}
-                                    activeOpacity={0.8}
-                                >
-                                    <View style={styles.captureButtonInner} />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                </CameraView>
-            </View>
-        );
-    }
-
-    if (capturedPhoto) {
-        return (
-            <View style={styles.previewContainer}>
-                <Text style={styles.previewTitle}>Photo Preview</Text>
-
-                <View style={styles.imageContainer}>
-                    <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
-                </View>
-
-                {location && (
-                    <View style={styles.locationCard}>
-                        <Ionicons name="location" size={20} color={COLORS.primary} />
-                        <View style={styles.locationInfo}>
-                            <Text style={styles.locationLabel}>Captured at:</Text>
-                            <Text style={styles.locationText}>{location.address}</Text>
-                            <Text style={styles.coordinatesText}>
-                                {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-                            </Text>
-                        </View>
-                    </View>
-                )}
-
-                <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                        style={styles.retakeButton}
-                        onPress={handleRetake}
-                        disabled={uploading}
-                    >
-                        <Ionicons name="camera-reverse" size={20} color={COLORS.textPrimary} />
-                        <Text style={styles.retakeButtonText}>Retake</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
-                        onPress={handleUpload}
-                        disabled={uploading}
-                    >
-                        {uploading ? (
-                            <ActivityIndicator color={COLORS.white} />
-                        ) : (
-                            <>
-                                <Ionicons name="cloud-upload" size={20} color={COLORS.white} />
-                                <Text style={styles.uploadButtonText}>Upload</Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
-                </View>
-            </View>
-        );
-    }
-
     return (
         <View style={styles.container}>
-            <TouchableOpacity
-                style={styles.captureCard}
-                onPress={handleOpenCamera}
-                activeOpacity={0.7}
+            <Modal
+                visible={showCamera}
+                animationType="slide"
+                transparent={false}
+                onRequestClose={() => setShowCamera(false)}
             >
-                <View style={styles.iconContainer}>
-                    <Ionicons name="camera" size={48} color={COLORS.primary} />
+                <View style={styles.cameraContainer}>
+                    <CameraView
+                        ref={cameraRef}
+                        style={styles.camera}
+                        facing={facing}
+                    >
+                        <View style={styles.cameraOverlay}>
+                            <View style={styles.cameraHeader}>
+                                <TouchableOpacity
+                                    style={styles.closeButton}
+                                    onPress={() => setShowCamera(false)}
+                                >
+                                    <Ionicons name="close" size={28} color={COLORS.white} />
+                                </TouchableOpacity>
+                                <Text style={styles.cameraTitle}>
+                                    {type === 'start' ? 'Start Work Photo' : 'End Work Photo'}
+                                </Text>
+                            </View>
+
+                            <View style={styles.cameraFooter}>
+                                <TouchableOpacity
+                                    style={styles.switchButton}
+                                    onPress={toggleCameraFacing}
+                                >
+                                    <Ionicons name="camera-reverse" size={32} color={COLORS.white} />
+                                </TouchableOpacity>
+
+                                <View style={styles.captureButtonContainer}>
+                                    <TouchableOpacity
+                                        style={styles.captureButton}
+                                        onPress={handleTakePhoto}
+                                        activeOpacity={0.8}
+                                    >
+                                        <View style={styles.captureButtonInner} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                <View style={{ width: 40 }} />
+                            </View>
+                        </View>
+                    </CameraView>
                 </View>
-                <Text style={styles.captureTitle}>
-                    Capture {type === 'start' ? 'Start' : 'End'} Work Photo
-                </Text>
-                <Text style={styles.captureSubtitle}>
-                    Photo will include your current location
-                </Text>
-            </TouchableOpacity>
+            </Modal>
+
+            {capturedPhoto ? (
+                <View style={styles.previewContainer}>
+                    <Text style={styles.previewTitle}>Photo Preview</Text>
+
+                    <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.8 }} style={{ marginBottom: 16 }}>
+                        <View style={styles.imageContainer}>
+                            <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
+                            {location && (
+                                <View style={styles.imageOverlay}>
+                                    <View style={styles.overlayRow}>
+                                        <Ionicons name="location" size={14} color={COLORS.white} />
+                                        <Text style={styles.overlayText}>
+                                            {location.address}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.overlayRow}>
+                                        <Ionicons name="time" size={14} color={COLORS.white} />
+                                        <Text style={styles.overlayText}>
+                                            {formatTimestamp(location.timestamp)}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.overlayRow}>
+                                        <Ionicons name="navigate" size={14} color={COLORS.white} />
+                                        <Text style={styles.overlayText}>
+                                            {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+                        </View>
+                    </ViewShot>
+
+                    {location && (
+                        <View style={styles.locationCard}>
+                            <Ionicons name="location" size={20} color={COLORS.primary} />
+                            <View style={styles.locationInfo}>
+                                <Text style={styles.locationLabel}>Captured at:</Text>
+                                <Text style={styles.locationText}>{location.address}</Text>
+                                <Text style={styles.coordinatesText}>
+                                    {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+
+                    <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                            style={styles.retakeButton}
+                            onPress={handleRetake}
+                            disabled={uploading}
+                        >
+                            <Ionicons name="camera-reverse" size={20} color={COLORS.textPrimary} />
+                            <Text style={styles.retakeButtonText}>Retake</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+                            onPress={handleUpload}
+                            disabled={uploading}
+                        >
+                            {uploading ? (
+                                <ActivityIndicator color={COLORS.white} />
+                            ) : (
+                                <>
+                                    <Ionicons name="cloud-upload" size={20} color={COLORS.white} />
+                                    <Text style={styles.uploadButtonText}>Upload</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            ) : (
+                <TouchableOpacity
+                    style={styles.captureCard}
+                    onPress={handleOpenCamera}
+                    activeOpacity={0.7}
+                >
+                    <View style={styles.iconContainer}>
+                        <Ionicons name="camera" size={48} color={COLORS.primary} />
+                    </View>
+                    <Text style={styles.captureTitle}>
+                        Capture {type === 'start' ? 'Start' : 'End'} Work Photo
+                    </Text>
+                    <Text style={styles.captureSubtitle}>
+                        Photo will include your current location
+                    </Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 };
@@ -331,8 +394,19 @@ const styles = StyleSheet.create({
         marginRight: 40,
     },
     cameraFooter: {
-        paddingBottom: 40,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 30,
+        paddingBottom: 40,
+    },
+    switchButton: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     captureButtonContainer: {
         alignItems: 'center',
@@ -365,7 +439,6 @@ const styles = StyleSheet.create({
     imageContainer: {
         borderRadius: 16,
         overflow: 'hidden',
-        marginBottom: 16,
     },
     previewImage: {
         width: '100%',
@@ -437,6 +510,26 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: COLORS.white,
+    },
+    imageOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: 12,
+    },
+    overlayRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 4,
+        gap: 8,
+    },
+    overlayText: {
+        color: COLORS.white,
+        fontSize: 12,
+        fontWeight: '500',
+        flex: 1,
     },
 });
 

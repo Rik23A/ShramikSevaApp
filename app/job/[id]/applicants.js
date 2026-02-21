@@ -15,7 +15,7 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS } from '../../../constants/config';
-import { getJobById, hireWorker, rejectApplicant } from '../../../services/jobService';
+import { getJobById, hireWorker, rejectApplicant, getApplicationsForJob } from '../../../services/jobService';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import { getFullImageUrl } from '../../../utils/imageUtil';
 
@@ -25,6 +25,8 @@ export default function JobApplicantsScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
+    const [activeTab, setActiveTab] = useState('candidate-apps'); // 'candidate-apps' or 'hire-requests'
+    const [applications, setApplications] = useState([]);
 
     useEffect(() => {
         fetchJobDetails();
@@ -32,8 +34,12 @@ export default function JobApplicantsScreen() {
 
     const fetchJobDetails = async () => {
         try {
-            const data = await getJobById(id);
-            setJob(data);
+            const [jobData, appsData] = await Promise.all([
+                getJobById(id),
+                getApplicationsForJob(id)
+            ]);
+            setJob(jobData);
+            setApplications(appsData);
         } catch (error) {
             console.error('Failed to fetch job:', error);
             Alert.alert('Error', 'Failed to load job details');
@@ -81,6 +87,12 @@ export default function JobApplicantsScreen() {
                         try {
                             setActionLoading(applicantId);
                             await rejectApplicant(id, applicantId);
+
+                            // Optimistic Update
+                            setApplications(prev => prev.map(app => {
+                                return app._id === applicantId ? { ...app, status: 'rejected' } : app;
+                            }));
+
                             Alert.alert('Done', 'Application rejected');
                             fetchJobDetails();
                         } catch (error) {
@@ -194,6 +206,11 @@ export default function JobApplicantsScreen() {
                             <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
                             <Text style={styles.hiredText}>Hired</Text>
                         </View>
+                    ) : item.status === 'rejected' ? (
+                        <View style={[styles.hiredBadge, { backgroundColor: '#FFEBEE', borderColor: COLORS.danger }]}>
+                            <Ionicons name="close-circle" size={16} color={COLORS.danger} />
+                            <Text style={[styles.hiredText, { color: COLORS.danger }]}>Rejected</Text>
+                        </View>
                     ) : (
                         <View style={styles.actionButtons}>
                             <TouchableOpacity
@@ -212,8 +229,8 @@ export default function JobApplicantsScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={styles.rejectButton}
-                                onPress={() => handleReject(item._id, worker.name)}
-                                disabled={actionLoading === item._id}
+                                onPress={() => handleReject(item._id || item.applicationId, worker.name)}
+                                disabled={actionLoading === worker._id}
                             >
                                 <Ionicons name="close" size={16} color={COLORS.danger} />
                                 <Text style={styles.rejectButtonText}>Reject</Text>
@@ -229,7 +246,17 @@ export default function JobApplicantsScreen() {
         return <LoadingSpinner fullScreen message="Loading applicants..." />;
     }
 
-    const applicants = job?.applicants || [];
+    const allApplicants = applications || [];
+
+    // Filter applicants based on active tab
+    const filteredApplicants = allApplicants.filter(app => {
+        if (activeTab === 'candidate-apps') {
+            return ['pending', 'hired', 'rejected', 'approved'].includes(app.status);
+        } else if (activeTab === 'hire-requests') {
+            return ['offered', 'offerAccepted', 'offerRejected'].includes(app.status);
+        }
+        return true;
+    });
 
     const renderHeader = () => (
         <View>
@@ -248,8 +275,8 @@ export default function JobApplicantsScreen() {
             <View style={styles.overlapCard}>
                 <View style={styles.statsRow}>
                     <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{applicants.length}</Text>
-                        <Text style={styles.statLabel}>Applicants</Text>
+                        <Text style={styles.statNumber}>{allApplicants.length}</Text>
+                        <Text style={styles.statLabel}>Total</Text>
                     </View>
                     <View style={styles.verticalDivider} />
                     <View style={styles.statItem}>
@@ -264,8 +291,29 @@ export default function JobApplicantsScreen() {
                 </View>
             </View>
 
+            <View style={styles.tabContainer}>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'candidate-apps' && styles.activeTabButton]}
+                    onPress={() => setActiveTab('candidate-apps')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'candidate-apps' && styles.activeTabText]}>
+                        Candidate Apps
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'hire-requests' && styles.activeTabButton]}
+                    onPress={() => setActiveTab('hire-requests')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'hire-requests' && styles.activeTabText]}>
+                        Hire Requests
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
             <View style={styles.sectionTitleRow}>
-                <Text style={styles.sectionTitle}>Candidates ({applicants.length})</Text>
+                <Text style={styles.sectionTitle}>
+                    {activeTab === 'candidate-apps' ? 'Applications' : 'Employer Offers'} ({filteredApplicants.length})
+                </Text>
             </View>
         </View>
     );
@@ -283,7 +331,7 @@ export default function JobApplicantsScreen() {
                 }}
             />
             <FlatList
-                data={applicants}
+                data={filteredApplicants}
                 keyExtractor={(item) => item._id || item.worker?._id}
                 renderItem={renderApplicant}
                 contentContainerStyle={styles.listContent}
@@ -291,8 +339,14 @@ export default function JobApplicantsScreen() {
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Ionicons name="people-outline" size={60} color={COLORS.textSecondary} />
-                        <Text style={styles.emptyTitle}>No Applicants Yet</Text>
-                        <Text style={styles.emptySubtitle}>Workers who apply will appear here</Text>
+                        <Text style={styles.emptyTitle}>
+                            {activeTab === 'candidate-apps' ? 'No Applications Yet' : 'No Hire Requests Yet'}
+                        </Text>
+                        <Text style={styles.emptySubtitle}>
+                            {activeTab === 'candidate-apps'
+                                ? 'Workers who apply will appear here'
+                                : 'Candidates you invited to hire will appear here'}
+                        </Text>
                     </View>
                 }
                 refreshControl={
@@ -387,6 +441,38 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '700',
         color: COLORS.text,
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.card,
+        marginHorizontal: 16,
+        padding: 4,
+        borderRadius: 12,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    tabButton: {
+        flex: 1,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderRadius: 8,
+    },
+    activeTabButton: {
+        backgroundColor: COLORS.primary,
+        elevation: 2,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    activeTabText: {
+        color: COLORS.white,
     },
     listContent: {
         paddingBottom: 40,

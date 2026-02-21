@@ -60,6 +60,18 @@ export const rejectApplicant = async (jobId, applicantId) => {
     return response.data;
 };
 
+// Get applications for a job (employer)
+export const getApplicationsForJob = async (jobId) => {
+    const response = await API.get(`/applications/job/${jobId}`);
+    return response.data;
+};
+
+// Get worker applications
+export const getWorkerApplications = async () => {
+    const response = await API.get('/applications/worker');
+    return response.data;
+};
+
 // Get hiring requests (worker)
 export const getHiringRequests = async () => {
     const response = await API.get('/jobs/hiring-requests');

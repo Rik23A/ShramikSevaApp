@@ -7,16 +7,22 @@ import {
     TouchableOpacity,
     Alert,
     RefreshControl,
+    Linking,
+    Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { COLORS } from '../../constants/config';
 import { getJobById, applyToJob } from '../../services/jobService';
+import { calculateRoute } from '../../services/geolocationService';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Button from '../../components/ui/Button';
+import WorkLogHistoryModal from '../../components/worklog/WorkLogHistoryModal';
 
 export default function JobDetailScreen() {
     const { id } = useLocalSearchParams();
@@ -26,6 +32,11 @@ export default function JobDetailScreen() {
     const [loading, setLoading] = useState(true);
     const [applying, setApplying] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [showWorkHistory, setShowWorkHistory] = useState(false);
+    const [currentLocation, setCurrentLocation] = useState(null);
+    const [locationPermission, setLocationPermission] = useState(null);
+    const [routeCoordinates, setRouteCoordinates] = useState([]);
+    const mapRef = React.useRef(null);
 
     const fetchJob = async () => {
         try {
@@ -40,15 +51,79 @@ export default function JobDetailScreen() {
         }
     };
 
+    const getLocation = async () => {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        setLocationPermission(status);
+        if (status !== 'granted') {
+            Alert.alert('Permission to access location was denied');
+            return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({});
+        setCurrentLocation(location.coords);
+    };
+
+    const isAssigned = job?.workers?.some(w => {
+        const id = w.workerId?._id || w.workerId;
+        return id?.toString() === user?._id?.toString() && ['hired', 'in-progress', 'completed'].includes(w.status);
+    });
+
     useEffect(() => {
         if (id) {
             fetchJob();
         }
     }, [id]);
 
+    useEffect(() => {
+        if (isAssigned) {
+            getLocation();
+        }
+    }, [isAssigned]);
+
+    useEffect(() => {
+        const fetchRoute = async () => {
+            if (currentLocation && job?.location?.coordinates) {
+                try {
+                    const origin = {
+                        latitude: currentLocation.latitude,
+                        longitude: currentLocation.longitude
+                    };
+                    const destination = {
+                        latitude: job.location.coordinates[1],
+                        longitude: job.location.coordinates[0]
+                    };
+                    const route = await calculateRoute(origin, destination);
+                    if (route && route.length > 0) {
+                        setRouteCoordinates(route);
+
+                        // Fit map to show the whole route
+                        if (mapRef.current) {
+                            mapRef.current.fitToCoordinates([origin, destination], {
+                                edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+                                animated: true,
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch route:', error);
+                    // Fallback to straight line if API fails
+                    setRouteCoordinates([
+                        { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+                        { latitude: job.location.coordinates[1], longitude: job.location.coordinates[0] }
+                    ]);
+                }
+            }
+        };
+
+        fetchRoute();
+    }, [currentLocation, job?.location?.coordinates]);
+
     const onRefresh = () => {
         setRefreshing(true);
         fetchJob();
+        if (isAssigned) {
+            getLocation();
+        }
     };
 
     const handleApply = async () => {
@@ -65,6 +140,22 @@ export default function JobDetailScreen() {
         }
     };
 
+    const handleGetDirections = () => {
+        if (!job?.location?.coordinates) {
+            Alert.alert('Error', 'Job location not available');
+            return;
+        }
+        const [lng, lat] = job.location.coordinates;
+        const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+        const latLng = `${lat},${lng}`;
+        const label = job.title || 'Job Location';
+        const url = Platform.select({
+            ios: `${scheme}${label}@${latLng}`,
+            android: `${scheme}${latLng}(${label})`
+        });
+        Linking.openURL(url);
+    };
+
     if (loading) {
         return <LoadingSpinner fullScreen message={t('loading')} />;
     }
@@ -79,10 +170,28 @@ export default function JobDetailScreen() {
         );
     }
 
-    const isAssigned = job.workers?.some(w => w.workerId === user?._id);
-    const hasApplied = job.userApplicationStatus || job.applicants?.some(a => (a._id || a.worker?._id || a).toString() === user?._id?.toString());
+
+
+
+
+    const hasApplied = job?.userApplicationStatus || job?.applicants?.some(a => {
+        const applicantId = a.worker?._id || a.worker || a._id || a;
+        return applicantId?.toString() === user?._id?.toString();
+    });
+
     const isEmployer = user?.role === 'employer';
-    const isMyJob = job.employer?._id === user?._id || job.employer === user?._id;
+    const isMyJob = (job?.employer?._id || job?.employer)?.toString() === user?._id?.toString();
+
+    // Debugging
+    if (job) {
+        console.log('JOB DEBUG:', {
+            jobId: job._id,
+            userId: user?._id,
+            isAssigned,
+            workerCount: job.workers?.length,
+            workers: job.workers?.map(w => ({ id: w.workerId, status: w.status }))
+        });
+    }
 
     return (
         <View style={styles.container}>
@@ -145,7 +254,7 @@ export default function JobDetailScreen() {
                         <View style={styles.keyStatItem}>
                             <Ionicons name="location-outline" size={18} color={COLORS.primary} />
                             <Text style={styles.keyStatText} numberOfLines={1}>
-                                {job.location?.city || t('location')}
+                                {job.location?.address || t('location')}
                             </Text>
                         </View>
                         <View style={styles.verticalDivider} />
@@ -224,6 +333,76 @@ export default function JobDetailScreen() {
                     </View>
                 )}
 
+                {/* Map Section for Assigned Workers */}
+                {isAssigned && job.location?.coordinates && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>{t('location_map')}</Text>
+                        <View style={styles.mapContainer}>
+                            <MapView
+                                ref={mapRef}
+                                provider={PROVIDER_GOOGLE}
+                                style={styles.map}
+                                initialRegion={{
+                                    latitude: job.location.coordinates[1],
+                                    longitude: job.location.coordinates[0],
+                                    latitudeDelta: 0.05,
+                                    longitudeDelta: 0.05,
+                                }}
+                            >
+                                <Marker
+                                    coordinate={{
+                                        latitude: job.location.coordinates[1],
+                                        longitude: job.location.coordinates[0],
+                                    }}
+                                    title={job.title}
+                                    description={job.location.address}
+                                    anchor={{ x: 0.5, y: 1 }} // Anchor at bottom center (tip of the pin)
+                                >
+                                    <View style={styles.markerContainer}>
+                                        <View style={styles.jobMarkerPin}>
+                                            <Ionicons name="briefcase" size={18} color={COLORS.white} />
+                                        </View>
+                                        <View style={styles.markerTip} />
+                                    </View>
+                                </Marker>
+
+                                {currentLocation && (
+                                    <Marker
+                                        coordinate={{
+                                            latitude: currentLocation.latitude,
+                                            longitude: currentLocation.longitude,
+                                        }}
+                                        title={t('you_are_here')}
+                                        anchor={{ x: 0.5, y: 0.5 }} // Center anchor for user dot
+                                    >
+                                        <View style={styles.userMarkerContainer}>
+                                            <View style={styles.userMarkerPulse} />
+                                            <View style={styles.userMarkerDot}>
+                                                <Ionicons name="person" size={14} color={COLORS.white} />
+                                            </View>
+                                        </View>
+                                    </Marker>
+                                )}
+
+                                {routeCoordinates && routeCoordinates.length > 0 && (
+                                    <Polyline
+                                        coordinates={routeCoordinates}
+                                        strokeColor={COLORS.primary}
+                                        strokeWidth={4}
+                                    />
+                                )}
+                            </MapView>
+                            {/* Overlay to intercept gestures if needed, or put buttons over map */}
+                            <TouchableOpacity
+                                style={styles.mapOverlayBtn}
+                                onPress={handleGetDirections}
+                            >
+                                <Ionicons name="navigate" size={20} color={COLORS.white} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+
                 {/* Action Button */}
                 <View style={styles.actionContainer}>
                     {isMyJob ? (
@@ -233,10 +412,29 @@ export default function JobDetailScreen() {
                             style={styles.primaryButton}
                         />
                     ) : isAssigned ? (
-                        <View style={styles.successBadge}>
-                            <Ionicons name="checkmark-circle" size={24} color={COLORS.white} />
-                            <Text style={styles.successText}>{t('hired_msg')}</Text>
-                        </View>
+                        <>
+                            <View style={styles.successBadge}>
+                                <Ionicons name="checkmark-circle" size={24} color={COLORS.white} />
+                                <Text style={styles.successText}>{t('hired_msg')}</Text>
+                            </View>
+                            <Button
+                                title={t('get_directions')}
+                                onPress={handleGetDirections}
+                                style={[styles.primaryButton, { marginTop: 12, backgroundColor: COLORS.primary }]}
+                                icon={<Ionicons name="map" size={20} color={COLORS.white} style={{ marginRight: 8 }} />}
+                            />
+                            <Button
+                                title={t('work_history')}
+                                onPress={() => setShowWorkHistory(true)}
+                                style={[styles.primaryButton, { marginTop: 12, backgroundColor: COLORS.secondary }]}
+                                icon={<Ionicons name="time" size={20} color={COLORS.white} style={{ marginRight: 8 }} />}
+                            />
+                            <WorkLogHistoryModal
+                                visible={showWorkHistory}
+                                jobId={id}
+                                onClose={() => setShowWorkHistory(false)}
+                            />
+                        </>
                     ) : hasApplied ? (
                         <View style={styles.warningBadge}>
                             <Ionicons name="time" size={24} color={COLORS.white} />
@@ -321,7 +519,7 @@ const styles = StyleSheet.create({
     },
     overlapCard: {
         marginHorizontal: 16,
-        marginTop: -50, // Adjusted overlap
+        marginTop: -100, // Adjusted overlap
         backgroundColor: COLORS.card,
         borderRadius: 20,
         padding: 20,
@@ -503,4 +701,90 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 15,
     },
+    mapContainer: {
+        height: 250,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        position: 'relative',
+    },
+    map: {
+        width: '100%',
+        height: '100%',
+    },
+    markerContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    jobMarkerPin: {
+        backgroundColor: COLORS.danger,
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        borderWidth: 3,
+        borderColor: COLORS.white,
+        alignItems: 'center',
+        justifyContent: 'center',
+        elevation: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+    },
+    markerTip: {
+        width: 0,
+        height: 0,
+        backgroundColor: 'transparent',
+        borderStyle: 'solid',
+        borderLeftWidth: 7,
+        borderRightWidth: 7,
+        borderTopWidth: 10,
+        borderLeftColor: 'transparent',
+        borderRightColor: 'transparent',
+        borderTopColor: COLORS.white,
+        marginTop: -2, // Slight overlap
+    },
+    userMarkerContainer: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    userMarkerPulse: {
+        position: 'absolute',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: COLORS.primary,
+        opacity: 0.2,
+    },
+    userMarkerDot: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: COLORS.primary,
+        borderWidth: 2,
+        borderColor: COLORS.white,
+        alignItems: 'center',
+        justifyContent: 'center',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+    },
+    mapOverlayBtn: {
+        position: 'absolute',
+        bottom: 16,
+        right: 16,
+        backgroundColor: COLORS.primary,
+        padding: 12,
+        borderRadius: 30,
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+    }
 });
