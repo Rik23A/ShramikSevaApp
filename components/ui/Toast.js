@@ -4,6 +4,7 @@ import Animated, { FadeInUp, FadeOutUp, LinearTransition } from 'react-native-re
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
 import { useRouter } from 'expo-router';
+import { useLanguage } from '../../context/LanguageContext';
 
 const { width } = Dimensions.get('window');
 
@@ -15,6 +16,7 @@ const TOAST_TYPES = {
 };
 
 export default function Toast({ id, type = 'info', title, message, action, onClose, duration = 4000 }) {
+    const { t } = useLanguage();
     const router = useRouter();
     const style = TOAST_TYPES[type] || TOAST_TYPES.info;
 
@@ -49,7 +51,7 @@ export default function Toast({ id, type = 'info', title, message, action, onClo
                 </View>
                 {action && (
                     <TouchableOpacity onPress={handlePress} style={styles.actionButton}>
-                        <Text style={[styles.actionText, { color: style.color }]}>{action.label || 'View'}</Text>
+                        <Text style={[styles.actionText, { color: style.color }]}>{action.label || t('view')}</Text>
                     </TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={() => onClose(id)} style={styles.closeButton}>

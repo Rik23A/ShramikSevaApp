@@ -8,9 +8,10 @@ import {
     TextInput,
     TouchableOpacity,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import { searchWorkers } from '../../services/userService';
 import { getMyJobs } from '../../services/jobService';
 import WorkerCard from '../../components/WorkerCard';
@@ -18,6 +19,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import WorkerFilterModal from '../../components/WorkerFilterModal';
 
 export default function WorkersScreen() {
+    const { t } = useLanguage();
     const [workers, setWorkers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -78,10 +80,20 @@ export default function WorkersScreen() {
         }
     };
 
+    const fetchLatestRef = useRef();
+
     useEffect(() => {
-        fetchJobs();
-        fetchWorkers();
-    }, []);
+        fetchLatestRef.current = () => {
+            fetchJobs();
+            fetchWorkers(searchQuery, filters);
+        };
+    });
+
+    useFocusEffect(
+        useCallback(() => {
+            if (fetchLatestRef.current) fetchLatestRef.current();
+        }, [])
+    );
 
     // Calculate active filters count for badge
     useEffect(() => {
@@ -120,7 +132,7 @@ export default function WorkersScreen() {
     };
 
     if (loading && workers.length === 0) {
-        return <LoadingSpinner fullScreen message="Finding workers..." />;
+        return <LoadingSpinner fullScreen message={t('finding_workers')} />;
     }
 
     return (
@@ -131,7 +143,7 @@ export default function WorkersScreen() {
                     <Ionicons name="search" size={20} color={COLORS.textSecondary} />
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Search by skill or name..."
+                        placeholder={t('search_workers_placeholder')}
                         placeholderTextColor={COLORS.textSecondary}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
@@ -161,7 +173,7 @@ export default function WorkersScreen() {
             {filters.jobId && (
                 <View style={styles.recommendationBanner}>
                     <Text style={styles.recommendationText}>
-                        ✨ Showing recommendations for job: <Text style={{ fontWeight: '700' }}>{jobs.find(j => j._id === filters.jobId)?.title}</Text>
+                        ✨ {t('showing_recommendations')} <Text style={{ fontWeight: '700' }}>{jobs.find(j => j._id === filters.jobId)?.title}</Text>
                     </Text>
                     <TouchableOpacity onPress={() => setFilters(prev => ({ ...prev, jobId: '' }))}>
                         <Ionicons name="close-circle" size={18} color={COLORS.primary} />
@@ -182,13 +194,13 @@ export default function WorkersScreen() {
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Ionicons name="people-outline" size={60} color={COLORS.textSecondary} />
-                        <Text style={styles.emptyTitle}>No Workers Found</Text>
-                        <Text style={styles.emptySubtitle}>Try adjusting your search or filters</Text>
+                        <Text style={styles.emptyTitle}>{t('no_workers_found')}</Text>
+                        <Text style={styles.emptySubtitle}>{t('no_jobs_sub')}</Text>
                         {activeFiltersCount > 0 && (
                             <TouchableOpacity style={styles.clearFiltersBtn} onPress={() => setFilters({
                                 jobId: '', workerType: '', location: '', availability: ''
                             })}>
-                                <Text style={styles.clearFiltersText}>Clear All Filters</Text>
+                                <Text style={styles.clearFiltersText}>{t('clear_all')}</Text>
                             </TouchableOpacity>
                         )}
                     </View>

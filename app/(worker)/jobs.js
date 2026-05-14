@@ -10,8 +10,8 @@ import {
     ScrollView,
     Modal,
 } from 'react-native';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
 import { COLORS, WORKER_TYPES, WORKER_SKILLS, SALARY_RANGES, EXPERIENCE_RANGES } from '../../constants/config';
 import { getJobs, getWorkerApplications } from '../../services/jobService';
 import JobCard from '../../components/JobCard';
@@ -52,12 +52,17 @@ export default function JobsScreen() {
         if (!user || user.role !== 'worker') return;
 
         const hasPreferences = (user.skills?.length > 0) || (user.workerType?.length > 0);
+        // If user has no skills/workerType there is nothing to personalise — skip to avoid showing all jobs
+        if (!hasPreferences) {
+            setRecommendedJobs([]);
+            return;
+        }
 
         try {
             setLoadingRecommended(true);
             const params = {
-                skills: user.skills?.length > 0 ? user.skills.join(",") : undefined,
-                workerType: user.workerType?.length > 0 ? user.workerType.join(",") : undefined,
+                // Strictly pass workerType to avoid the AND condition hiding valid jobs lacking skill tags
+                workerType: Array.isArray(user.workerType) && user.workerType.length > 0 ? user.workerType.join(",") : undefined,
                 pageNumber: 1,
                 limit: 10,
             };
@@ -127,15 +132,27 @@ export default function JobsScreen() {
         }
     };
 
+    const fetchLatestRef = useRef();
+
+    // Store latest fetchers in ref to avoid triggering useFocusEffect on every state change
     useEffect(() => {
-        fetchJobs();
-        fetchRecommendedJobs();
-        fetchAppliedJobs();
-    }, []);
+        fetchLatestRef.current = () => {
+            fetchJobs(1, true);
+            fetchAppliedJobs();
+            if (user?._id) fetchRecommendedJobs();
+        };
+    });
+
+    useFocusEffect(
+        useCallback(() => {
+            if (fetchLatestRef.current) fetchLatestRef.current();
+        }, [])
+    );
 
     useEffect(() => {
         if (isFirstRender.current) {
             isFirstRender.current = false;
+            fetchJobs(1, true);
             return;
         }
 
@@ -145,7 +162,7 @@ export default function JobsScreen() {
         }, 500);
 
         return () => clearTimeout(delayDebounceFn);
-    }, [searchQuery]);
+    }, [searchQuery, filters]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -160,7 +177,6 @@ export default function JobsScreen() {
     const handleSearch = () => {
         setLoading(true);
         setPage(1);
-        fetchJobs(1, true);
         setShowFilters(false);
     };
 
@@ -174,12 +190,13 @@ export default function JobsScreen() {
     const hasActiveFilters = filters.location || filters.workerType || filters.skills?.length > 0 ||
         filters.workType || filters.salaryRange !== 'any' || filters.experienceRange !== 'any';
 
+    const isSearching = searchQuery.length > 0 || hasActiveFilters;
+
     // Remove individual filter
     const removeFilter = (filterKey) => {
         setFilters({ ...filters, [filterKey]: '' });
         setLoading(true);
         setPage(1);
-        fetchJobs(1, true);
     };
 
     // Clear all filters
@@ -198,7 +215,6 @@ export default function JobsScreen() {
         });
         setLoading(true);
         setPage(1);
-        fetchJobs(1, true);
     };
 
     const renderHeader = () => (
@@ -256,7 +272,7 @@ export default function JobsScreen() {
                         {filters.skills && filters.skills.length > 0 && (
                             <View style={styles.filterChip}>
                                 <Text style={styles.filterChipText} numberOfLines={1}>
-                                    {filters.skills.length} skill{filters.skills.length > 1 ? 's' : ''}
+                                    {t('skills_count', { count: filters.skills.length })}
                                 </Text>
                                 <TouchableOpacity onPress={() => removeFilter('skills')}>
                                     <Ionicons name="close-circle" size={16} color={COLORS.white} />
@@ -274,7 +290,7 @@ export default function JobsScreen() {
                         {filters.salaryRange && filters.salaryRange !== 'any' && (
                             <View style={styles.filterChip}>
                                 <Text style={styles.filterChipText}>
-                                    {SALARY_RANGES.find(r => r.key === filters.salaryRange)?.label}
+                                    {t(`salary_${filters.salaryRange}`) || SALARY_RANGES.find(r => r.key === filters.salaryRange)?.label}
                                 </Text>
                                 <TouchableOpacity onPress={() => setFilters({ ...filters, salaryRange: 'any' })}>
                                     <Ionicons name="close-circle" size={16} color={COLORS.white} />
@@ -284,7 +300,7 @@ export default function JobsScreen() {
                         {filters.experienceRange && filters.experienceRange !== 'any' && (
                             <View style={styles.filterChip}>
                                 <Text style={styles.filterChipText}>
-                                    {EXPERIENCE_RANGES.find(r => r.key === filters.experienceRange)?.label}
+                                    {t(`exp_${filters.experienceRange}`) || EXPERIENCE_RANGES.find(r => r.key === filters.experienceRange)?.label}
                                 </Text>
                                 <TouchableOpacity onPress={() => setFilters({ ...filters, experienceRange: 'any' })}>
                                     <Ionicons name="close-circle" size={16} color={COLORS.white} />
@@ -292,18 +308,18 @@ export default function JobsScreen() {
                             </View>
                         )}
                         <TouchableOpacity onPress={clearAllFilters}>
-                            <Text style={styles.clearAllText}>Clear All</Text>
+                            <Text style={styles.clearAllText}>{t('clear_all')}</Text>
                         </TouchableOpacity>
                     </View>
                 )}
             </View>
 
             {/* Recommended Jobs */}
-            {recommendedJobs.length > 0 && (
+            {recommendedJobs.length > 0 && !isSearching && (
                 <View style={styles.sectionContainer}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="sparkles" size={18} color={COLORS.primary} />
-                        <Text style={styles.sectionTitle}>{t('recommended_jobs') || "Recommended for You"}</Text>
+                        <Text style={styles.sectionTitle}>{t('recommended_jobs')}</Text>
                     </View>
                     <FlatList
                         horizontal
@@ -315,6 +331,7 @@ export default function JobsScreen() {
                                     job={item}
                                     onPress={() => router.push(`/job-details/${item._id}`)}
                                     isRecommended={true}
+                                    noMargin={true}
                                 />
                             </View>
                         )}
@@ -325,11 +342,11 @@ export default function JobsScreen() {
             )}
 
             {/* Applied Jobs */}
-            {appliedJobs.length > 0 && (
+            {appliedJobs.length > 0 && !isSearching && (
                 <View style={styles.sectionContainer}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="briefcase" size={18} color="#2196F3" />
-                        <Text style={styles.sectionTitle}>{t('applied_jobs') || "Applied Jobs"}</Text>
+                        <Text style={styles.sectionTitle}>{t('applied_jobs')}</Text>
                     </View>
                     <FlatList
                         horizontal
@@ -348,7 +365,7 @@ export default function JobsScreen() {
             )}
 
             <View style={[styles.sectionHeader, { paddingHorizontal: 16, marginTop: 16, marginBottom: 8 }]}>
-                <Text style={styles.sectionTitle}>{searchQuery ? 'Search Results' : 'All Jobs'}</Text>
+                <Text style={styles.sectionTitle}>{isSearching ? t('search_results') : t('all_jobs')}</Text>
             </View>
         </View>
     );
@@ -399,7 +416,8 @@ export default function JobsScreen() {
         const handleApply = () => {
             setFilters(localFilters);
             setShowFilters(false);
-            handleSearch();
+            setLoading(true);
+            setPage(1);
         };
 
         const handleReset = () => {
@@ -443,7 +461,7 @@ export default function JobsScreen() {
                                     <Text style={styles.filterLabel}>{t('location') || 'Location'}</Text>
                                     <TextInput
                                         style={styles.filterInput}
-                                        placeholder={t('location_placeholder') || 'Enter city or area'}
+                                        placeholder={t('enter_location_area')}
                                         placeholderTextColor={COLORS.textSecondary}
                                         value={localFilters.location}
                                         onChangeText={(text) => setLocalFilters({ ...localFilters, location: text })}
@@ -458,7 +476,7 @@ export default function JobsScreen() {
                                         onPress={() => openDropdown('workerType', t('worker_type') || 'Worker Type', WORKER_TYPES, false)}
                                     >
                                         <Text style={[styles.dropdownText, !localFilters.workerType && styles.placeholderText]}>
-                                            {localFilters.workerType || (t('select_worker_type') || 'Select worker type')}
+                                            {localFilters.workerType || t('select_worker_type')}
                                         </Text>
                                         <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
                                     </TouchableOpacity>
@@ -479,7 +497,7 @@ export default function JobsScreen() {
                                         <Text style={[styles.dropdownText, (!localFilters.skills || localFilters.skills.length === 0) && styles.placeholderText]} numberOfLines={2}>
                                             {localFilters.skills && localFilters.skills.length > 0
                                                 ? localFilters.skills.join(', ')
-                                                : (localFilters.workerType ? (t('select_skills') || 'Select skills') : (t('select_worker_type_first') || 'Select worker type first'))}
+                                                : (localFilters.workerType ? t('select_skills') : t('select_worker_type_first'))}
                                         </Text>
                                         <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
                                     </TouchableOpacity>
@@ -505,13 +523,13 @@ export default function JobsScreen() {
 
                                 {/* Salary Range Dropdown */}
                                 <View style={styles.filterSection}>
-                                    <Text style={styles.filterLabel}>{t('salary_range') || 'Salary Range'}</Text>
+                                    <Text style={styles.filterLabel}>{t('salary_range')}</Text>
                                     <TouchableOpacity
                                         style={styles.dropdownButton}
-                                        onPress={() => openDropdown('salaryRange', t('salary_range') || 'Salary Range', SALARY_RANGES.map(r => ({ key: r.key, label: r.label })), false)}
+                                        onPress={() => openDropdown('salaryRange', t('salary_range'), SALARY_RANGES.map(r => ({ key: r.key, label: t(`salary_${r.key}`) || r.label })), false)}
                                     >
                                         <Text style={[styles.dropdownText, localFilters.salaryRange === 'any' && styles.placeholderText]}>
-                                            {SALARY_RANGES.find(r => r.key === localFilters.salaryRange)?.label || 'Any'}
+                                            {t(`salary_${localFilters.salaryRange}`) || SALARY_RANGES.find(r => r.key === localFilters.salaryRange)?.label || t('any')}
                                         </Text>
                                         <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
                                     </TouchableOpacity>
@@ -519,13 +537,13 @@ export default function JobsScreen() {
 
                                 {/* Experience Range Dropdown */}
                                 <View style={styles.filterSection}>
-                                    <Text style={styles.filterLabel}>{t('experience_range') || 'Experience Range'}</Text>
+                                    <Text style={styles.filterLabel}>{t('experience_range')}</Text>
                                     <TouchableOpacity
                                         style={styles.dropdownButton}
-                                        onPress={() => openDropdown('experienceRange', t('experience_range') || 'Experience Range', EXPERIENCE_RANGES.map(r => ({ key: r.key, label: r.label })), false)}
+                                        onPress={() => openDropdown('experienceRange', t('experience_range'), EXPERIENCE_RANGES.map(r => ({ key: r.key, label: t(`exp_${r.key}`) || r.label })), false)}
                                     >
                                         <Text style={[styles.dropdownText, localFilters.experienceRange === 'any' && styles.placeholderText]}>
-                                            {EXPERIENCE_RANGES.find(r => r.key === localFilters.experienceRange)?.label || 'Any'}
+                                            {t(`exp_${localFilters.experienceRange}`) || EXPERIENCE_RANGES.find(r => r.key === localFilters.experienceRange)?.label || t('any')}
                                         </Text>
                                         <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
                                     </TouchableOpacity>
@@ -534,7 +552,7 @@ export default function JobsScreen() {
 
                             <View style={styles.modalFooter}>
                                 <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
-                                    <Text style={styles.resetButtonText}>Reset</Text>
+                                    <Text style={styles.resetButtonText}>{t('reset')}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity style={styles.applyFilterButton} onPress={handleApply}>
                                     <Text style={styles.applyFilterText}>{t('apply_filters')}</Text>
@@ -586,7 +604,7 @@ export default function JobsScreen() {
                             {isMultiSelect && (
                                 <View style={styles.modalFooter}>
                                     <TouchableOpacity style={styles.applyFilterButton} onPress={() => setShowDropdown(false)}>
-                                        <Text style={styles.applyFilterText}>Done</Text>
+                                        <Text style={styles.applyFilterText}>{t('done')}</Text>
                                     </TouchableOpacity>
                                 </View>
                             )}

@@ -12,7 +12,8 @@ import {
     TouchableOpacity,
     Image
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Button from '../../components/ui/Button';
@@ -27,7 +28,6 @@ import { Ionicons } from '@expo/vector-icons';
 const { width } = Dimensions.get('window');
 
 export default function LoginScreen() {
-    const insets = useSafeAreaInsets();
     const { t } = useLanguage();
     const { login } = useAuth();
     const [loginMethod, setLoginMethod] = useState('mobile'); // 'mobile' or 'email'
@@ -98,12 +98,12 @@ export default function LoginScreen() {
 
     const handleEmailLogin = async () => {
         if (!email || !password) {
-            setError(t('enter_email_password') || "Enter Email & Password");
+            setError(t('enter_email_password'));
             return;
         }
 
         if (!validateEmail(email)) {
-            setError(t('valid_email_error') || "Invalid Email Format");
+            setError(t('valid_email_error'));
             return;
         }
 
@@ -115,20 +115,30 @@ export default function LoginScreen() {
             if (data && data.token) {
                 const success = await login(data);
                 if (success) {
-                    router.replace('/(tabs)/home');
+                    // Navigate to the correct dashboard based on role
+                    const role = data.role || data.user?.role;
+                    if (role === 'worker') {
+                        router.replace('/(worker)/dashboard');
+                    } else if (role === 'employer') {
+                        router.replace('/(employer)/dashboard');
+                    } else {
+                        // Fallback: let the root index.js handle redirection
+                        router.replace('/');
+                    }
                 } else {
-                    setError('Login failed during local save');
+                    setError(t('login_failed_save'));
                 }
             } else {
-                setError('Invalid server response');
+                setError(t('invalid_server_response'));
             }
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.message || 'Login failed');
+            setError(err.response?.data?.message || t('login_failed'));
         } finally {
             setLoading(false);
         }
     };
+
 
     const renderToggle = () => (
         <View style={styles.toggleContainer}>
@@ -147,7 +157,7 @@ export default function LoginScreen() {
                         color={loginMethod === 'mobile' ? COLORS.primary : COLORS.textSecondary}
                     />
                     <Text style={[styles.toggleText, loginMethod === 'mobile' && styles.toggleTextActive]}>
-                        Mobile OTP
+                        {t('mobile_otp')}
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -164,7 +174,7 @@ export default function LoginScreen() {
                         color={loginMethod === 'email' ? COLORS.primary : COLORS.textSecondary}
                     />
                     <Text style={[styles.toggleText, loginMethod === 'email' && styles.toggleTextActive]}>
-                        Email Login
+                        {t('email_login')}
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -172,141 +182,142 @@ export default function LoginScreen() {
     );
 
     return (
-        <View style={styles.container}>
-            {loading && <LoadingSpinner fullScreen={true} message={loginMethod === 'mobile' ? "Sending OTP..." : "Logging in..."} />}
+        <SafeAreaView style={[styles.container, { backgroundColor: COLORS.primary }]} edges={['top', 'left', 'right']}>
+            <StatusBar style="light" backgroundColor={COLORS.primary} />
+            <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+                {loading && <LoadingSpinner fullScreen={true} message={loginMethod === 'mobile' ? t('sending_otp') : t('logging_in')} />}
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.keyboardView}
-            >
-                <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    bounces={false}
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.keyboardView}
                 >
-                    {/* Header Section with Gradient */}
-                    <View style={styles.headerContainer}>
-                        <LinearGradient
-                            colors={[COLORS.primary, COLORS.primaryDark]}
-                            style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                        >
-                            <View style={styles.headerContent}>
-                                <View style={styles.logoCircle}>
-                                    <Ionicons name="briefcase" size={40} color={COLORS.primary} />
-                                </View>
-                                <Text style={styles.headerTitle}>श्रमिक सेवा</Text>
-                                <Text style={styles.headerSubtitle}>Shramik Seva</Text>
-                                <Text style={styles.headerTagline}>{t('tagline')}</Text>
-                            </View>
-                            <View style={styles.headerCurve} />
-                        </LinearGradient>
-                    </View>
-
-                    <Animated.View
-                        style={[
-                            styles.formContainer,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }]
-                            }
-                        ]}
+                    <ScrollView
+                        contentContainerStyle={styles.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                        bounces={false}
                     >
-                        <View style={styles.formCard}>
-                            <Text style={styles.welcomeText}>{t('welcome_back')}</Text>
-                            <Text style={styles.instructionText}>{t('login_subtitle')}</Text>
+                        {/* Header Section with Gradient */}
+                        <View style={styles.headerContainer}>
+                            <LinearGradient
+                                colors={[COLORS.primary, COLORS.primaryDark]}
+                                style={[styles.headerGradient, { paddingTop: 20 }]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                <View style={styles.headerContent}>
+                                    <Image source={require('../../assets/images/icon.png')} style={{ width: 80, height: 80, marginBottom: 16 }} resizeMode="contain" />
+                                    <Text style={styles.headerTitle}>{t('app_name_hi')}</Text>
+                                    <Text style={styles.headerSubtitle}>{t('app_name')}</Text>
+                                    <Text style={styles.headerTagline}>{t('tagline')}</Text>
+                                </View>
+                                <View style={styles.headerCurve} />
+                            </LinearGradient>
+                        </View>
 
-                            {renderToggle()}
+                        <Animated.View
+                            style={[
+                                styles.formContainer,
+                                {
+                                    opacity: fadeAnim,
+                                    transform: [{ translateY: slideAnim }]
+                                }
+                            ]}
+                        >
+                            <View style={styles.formCard}>
+                                <Text style={styles.welcomeText}>{t('welcome_back')}</Text>
+                                <Text style={styles.instructionText}>{t('login_subtitle')}</Text>
 
-                            {loginMethod === 'mobile' ? (
-                                <View style={styles.inputSection}>
-                                    <View style={styles.phoneInputWrapper}>
-                                        <View style={styles.countryCodeBadge}>
-                                            <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                                {renderToggle()}
+
+                                {loginMethod === 'mobile' ? (
+                                    <View style={styles.inputSection}>
+                                        <View style={styles.phoneInputWrapper}>
+                                            <View style={styles.countryCodeBadge}>
+                                                <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Input
+                                                    placeholder={t('enter_mobile_placeholder')}
+                                                    value={mobile}
+                                                    onChangeText={(text) => {
+                                                        setMobile(text.replace(/[^0-9]/g, '').slice(0, 10));
+                                                        setError('');
+                                                    }}
+                                                    keyboardType="phone-pad"
+                                                    error={error}
+                                                    maxLength={10}
+                                                    icon="call-outline"
+                                                    style={{ marginBottom: 0 }} // Remove default bottom margin for alignment
+                                                    containerStyle={{ marginBottom: 0 }} // New prop to handle container margin if added to Input component
+                                                />
+                                            </View>
                                         </View>
-                                        <View style={{ flex: 1 }}>
+
+                                        <Button
+                                            title={t('get_otp')}
+                                            onPress={handleRequestOtp}
+                                            disabled={!mobile || loading}
+                                            style={styles.actionButton}
+                                        />
+                                    </View>
+                                ) : (
+                                    <View style={styles.inputSection}>
+                                        <View style={styles.inputGroup}>
                                             <Input
-                                                placeholder={t('enter_mobile_placeholder')}
-                                                value={mobile}
+                                                placeholder={t('enter_email_address')}
+                                                value={email}
                                                 onChangeText={(text) => {
-                                                    setMobile(text.replace(/[^0-9]/g, '').slice(0, 10));
+                                                    setEmail(text);
                                                     setError('');
                                                 }}
-                                                keyboardType="phone-pad"
+                                                keyboardType="email-address"
+                                                autoCapitalize="none"
+                                                icon="mail-outline"
+                                            />
+                                            <View style={{ height: 16 }} />
+                                            <Input
+                                                placeholder={t('enter_password')}
+                                                value={password}
+                                                onChangeText={(text) => {
+                                                    setPassword(text);
+                                                    setError('');
+                                                }}
+                                                secureTextEntry
+                                                icon="lock-closed-outline"
                                                 error={error}
-                                                maxLength={10}
-                                                icon="call-outline"
-                                                style={{ marginBottom: 0 }} // Remove default bottom margin for alignment
-                                                containerStyle={{ marginBottom: 0 }} // New prop to handle container margin if added to Input component
                                             />
                                         </View>
-                                    </View>
 
-                                    <Button
-                                        title={t('get_otp')}
-                                        onPress={handleRequestOtp}
-                                        disabled={!mobile || loading}
-                                        style={styles.actionButton}
-                                    />
-                                </View>
-                            ) : (
-                                <View style={styles.inputSection}>
-                                    <View style={styles.inputGroup}>
-                                        <Input
-                                            placeholder="Enter Email Address"
-                                            value={email}
-                                            onChangeText={(text) => {
-                                                setEmail(text);
-                                                setError('');
-                                            }}
-                                            keyboardType="email-address"
-                                            autoCapitalize="none"
-                                            icon="mail-outline"
-                                        />
-                                        <View style={{ height: 16 }} />
-                                        <Input
-                                            placeholder="Enter Password"
-                                            value={password}
-                                            onChangeText={(text) => {
-                                                setPassword(text);
-                                                setError('');
-                                            }}
-                                            secureTextEntry
-                                            icon="lock-closed-outline"
-                                            error={error}
+                                        <Button
+                                            title={t('login_securely')}
+                                            onPress={handleEmailLogin}
+                                            disabled={!email || !password || loading}
+                                            style={styles.actionButton}
                                         />
                                     </View>
+                                )}
 
-                                    <Button
-                                        title="Login Securely"
-                                        onPress={handleEmailLogin}
-                                        disabled={!email || !password || loading}
-                                        style={styles.actionButton}
-                                    />
-                                </View>
-                            )}
+                                <View style={styles.footerSection}>
+                                    <View style={styles.divider}>
+                                        <View style={styles.dividerLine} />
+                                        <Text style={styles.dividerText}>{t('or')}</Text>
+                                        <View style={styles.dividerLine} />
+                                    </View>
 
-                            <View style={styles.footerSection}>
-                                <View style={styles.divider}>
-                                    <View style={styles.dividerLine} />
-                                    <Text style={styles.dividerText}>{t('or')}</Text>
-                                    <View style={styles.dividerLine} />
-                                </View>
-
-                                <View style={styles.signupContainer}>
-                                    <Text style={styles.signupText}>New to Shramik Seva?</Text>
-                                    <TouchableOpacity onPress={() => router.push('/auth/select-role')}>
-                                        <Text style={styles.signupLink}>{t('create_new_account')}</Text>
-                                    </TouchableOpacity>
+                                    <View style={styles.signupContainer}>
+                                        <Text style={styles.signupText}>{t('new_to_shramik_seva')}</Text>
+                                        <TouchableOpacity onPress={() => router.push('/auth/select-role')}>
+                                            <Text style={styles.signupLink}>{t('create_new_account')}</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
                             </View>
-                        </View>
-                    </Animated.View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </View>
+                        </Animated.View>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </View>
+        </SafeAreaView>
     );
 }
 

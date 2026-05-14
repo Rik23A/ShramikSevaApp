@@ -13,11 +13,13 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
-import { getMyJobs, closeJob } from '../../services/jobService';
+import { getMyJobs, closeJob, reopenJob } from '../../services/jobService';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function MyJobsScreen() {
+    const { t } = useLanguage();
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -55,23 +57,37 @@ export default function MyJobsScreen() {
         }
     };
 
-    const handleCloseJob = (jobId) => {
+    const handleToggleStatus = (job) => {
+        const isActive = ['open', 'in-progress'].includes(job.status);
+        const newStatus = isActive ? 'closed' : 'open';
+        const action = isActive ? t('close') : t('reopen');
+        const message = isActive
+            ? t('close_job_confirm') || 'Are you sure you want to close this job? Workers will no longer see it.'
+            : t('reopen_job_confirm') || 'Reopen this job? It will be listed as open and visible to workers again.';
+
         Alert.alert(
-            'Close Job',
-            'Are you sure you want to close this job? You can only have 1 active job on the Basic plan.',
+            `${action} ${t('job')}`,
+            message,
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Close Job',
-                    style: 'destructive',
+                    text: action,
+                    style: isActive ? 'destructive' : 'default',
                     onPress: async () => {
                         try {
                             setLoading(true);
-                            await closeJob(jobId);
-                            await fetchJobs(); // Refresh list
-                            Alert.alert('Success', 'Job closed successfully');
+                            if (isActive) {
+                                await closeJob(job._id);
+                            } else {
+                                await reopenJob(job._id);
+                            }
+                            // Update locally to avoid a full refresh round-trip
+                            setJobs(prev => prev.map(j =>
+                                j._id === job._id ? { ...j, status: newStatus } : j
+                            ));
+                            Alert.alert(t('success'), `${t('job')} ${isActive ? t('closed') : t('reopened')} ${t('successfully')}`);
                         } catch (error) {
-                            Alert.alert('Error', 'Failed to close job');
+                            Alert.alert(t('error'), `${t('failed_to')} ${action.toLowerCase()} ${t('job')}. ${t('try_again')}`);
                             console.error(error);
                         } finally {
                             setLoading(false);
@@ -82,8 +98,9 @@ export default function MyJobsScreen() {
         );
     };
 
+
     if (loading) {
-        return <LoadingSpinner fullScreen message="Loading jobs..." />;
+        return <LoadingSpinner fullScreen message={t('loading')} />;
     }
 
     return (
@@ -102,7 +119,7 @@ export default function MyJobsScreen() {
                             onPress={() => setFilter(f)}
                         >
                             <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                                {f.charAt(0).toUpperCase() + f.slice(1).replace('-', ' ')}
+                                {f === 'all' ? t('filter_all') : f === 'in-progress' ? t('status_in_progress') : t(f)}
                             </Text>
                         </TouchableOpacity>
                     ))}
@@ -124,11 +141,27 @@ export default function MyJobsScreen() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.jobTitle} numberOfLines={2}>{item.title}</Text>
                                             <Text style={styles.companyName}>
-                                                {item.companyName || 'Your Company'}
+                                                {item.companyName || t('your_company')}
                                             </Text>
                                         </View>
-                                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-                                            <Text style={styles.statusText}>{item.status}</Text>
+                                        <View style={styles.headerActions}>
+                                            <TouchableOpacity
+                                                style={styles.editIconBadge}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    router.push({
+                                                        pathname: '/(employer)/post-job',
+                                                        params: { jobId: item._id }
+                                                    });
+                                                }}
+                                            >
+                                                <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                                                <Text style={styles.editBadgeText}>{t('edit')}</Text>
+                                            </TouchableOpacity>
+
+                                            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+                                                <Text style={styles.statusText}>{item.status === 'in-progress' ? t('status_in_progress') : t(item.status)}</Text>
+                                            </View>
                                         </View>
                                     </View>
 
@@ -138,12 +171,14 @@ export default function MyJobsScreen() {
                                         <View style={styles.metaItem}>
                                             <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
                                             <Text style={styles.metaText} numberOfLines={1}>
-                                                {item.location?.address || 'Location N/A'}
+                                                {item.location?.address || t('not_specified')}
                                             </Text>
                                         </View>
                                         <View style={styles.metaItem}>
                                             <Ionicons name="cash-outline" size={16} color={COLORS.textSecondary} />
-                                            <Text style={styles.metaText}>₹{item.salary}/day</Text>
+                                            <Text style={styles.metaText}>
+                                                ₹{item.salary} {item.workType === 'temporary' ? t('per_day') : t('per_month')}
+                                            </Text>
                                         </View>
                                     </View>
 
@@ -155,7 +190,7 @@ export default function MyJobsScreen() {
                                                     {item.applicants?.length || 0}
                                                 </Text>
                                             </View>
-                                            <Text style={styles.applicantLabel}>Applicants</Text>
+                                            <Text style={styles.applicantLabel}>{t('applicants')}</Text>
                                         </View>
 
                                         <View style={styles.actionButtons}>
@@ -167,21 +202,40 @@ export default function MyJobsScreen() {
                                                         router.push(`/job/${item._id}/applicants`);
                                                     }}
                                                 >
-                                                    <Text style={styles.viewButtonText}>View</Text>
+                                                    <Text style={styles.viewButtonText}>{t('view')}</Text>
                                                 </TouchableOpacity>
                                             )}
-                                            {item.status !== 'closed' && (
+                                            {/* Toggle button: Close for active jobs, Reopen for closed jobs */}
+                                            {item.status !== 'completed' && item.status !== 'done' && (
                                                 <TouchableOpacity
-                                                    style={styles.closeButton}
+                                                    style={[
+                                                        styles.toggleButton,
+                                                        item.status === 'closed'
+                                                            ? styles.reopenButton
+                                                            : styles.closeButtonStyled,
+                                                    ]}
                                                     onPress={(e) => {
                                                         e.stopPropagation();
-                                                        handleCloseJob(item._id);
+                                                        handleToggleStatus(item);
                                                     }}
                                                 >
-                                                    <Ionicons name="close-circle-outline" size={20} color={COLORS.danger} />
+                                                    <Ionicons
+                                                        name={item.status === 'closed' ? 'refresh-circle-outline' : 'close-circle-outline'}
+                                                        size={15}
+                                                        color={item.status === 'closed' ? COLORS.success : COLORS.danger}
+                                                    />
+                                                    <Text
+                                                        style={[
+                                                            styles.toggleButtonText,
+                                                            { color: item.status === 'closed' ? COLORS.success : COLORS.danger }
+                                                        ]}
+                                                    >
+                                                        {item.status === 'closed' ? t('reopen') : t('close')}
+                                                    </Text>
                                                 </TouchableOpacity>
                                             )}
                                         </View>
+
                                     </View>
                                 </View>
                             </Card>
@@ -194,18 +248,18 @@ export default function MyJobsScreen() {
                         <View style={styles.emptyIconBg}>
                             <Ionicons name="briefcase" size={40} color={COLORS.secondary} />
                         </View>
-                        <Text style={styles.emptyTitle}>No Jobs Found</Text>
+                        <Text style={styles.emptyTitle}>{t('no_jobs_found')}</Text>
                         <Text style={styles.emptySubtitle}>
                             {filter === 'all'
-                                ? "You haven't posted any jobs yet."
-                                : `No ${filter} jobs found.`}
+                                ? t('no_jobs_posted_yet')
+                                : `${t('no')} ${filter === 'in-progress' ? t('status_in_progress') : t(filter)} ${t('jobs')} ${t('found')}.`}
                         </Text>
                         <TouchableOpacity
                             style={styles.postButton}
                             onPress={() => router.push('/(employer)/post-job')}
                         >
                             <Ionicons name="add" size={20} color={COLORS.white} />
-                            <Text style={styles.postButtonText}>Post New Job</Text>
+                            <Text style={styles.postButtonText}>{t('post_new_job')}</Text>
                         </TouchableOpacity>
                     </View>
                 }
@@ -371,6 +425,55 @@ const styles = StyleSheet.create({
     closeButton: {
         padding: 4,
     },
+    viewAllText: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    editIconBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primary + '10',
+        marginRight: 8,
+        gap: 3,
+    },
+    editBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: COLORS.primary,
+        textTransform: 'uppercase',
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    toggleButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        gap: 5,
+    },
+    closeButtonStyled: {
+        borderColor: COLORS.danger,
+        backgroundColor: '#FFF0F0',
+    },
+    reopenButton: {
+        borderColor: COLORS.success,
+        backgroundColor: '#F0FFF4',
+    },
+    toggleButtonText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+
     emptyContainer: {
         flex: 1,
         alignItems: 'center',

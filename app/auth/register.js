@@ -12,9 +12,11 @@ import {
     Dimensions,
     Modal,
     FlatList,
-    TouchableWithoutFeedback
+    TouchableWithoutFeedback,
+    Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../../components/ui/Button';
@@ -29,7 +31,7 @@ import {
     EMPLOYEE_COUNTS,
     WORKER_SKILLS
 } from '../../constants/config';
-import { initiateRegistration, completeRegistration } from '../../services/authService';
+import { initiateRegistration, completeRegistration, checkMobile } from '../../services/authService';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -143,44 +145,46 @@ export default function RegisterScreen() {
         const newErrors = {};
 
         if (currentStep === 1) {
-            if (!formData.name.trim()) newErrors.name = 'Name is required';
+            if (!formData.name.trim()) newErrors.name = t('name_required') || 'Name is required';
             if (!formData.mobile || !/^[6-9]\d{9}$/.test(formData.mobile)) {
-                newErrors.mobile = 'Enter valid 10-digit mobile number';
+                newErrors.mobile = t('valid_mobile_error');
             }
             if (role === 'employer' && !formData.email) {
-                newErrors.email = 'Email is required for employers';
+                newErrors.email = t('email_required') || 'Email is required for employers';
             }
             if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
-                newErrors.email = 'Enter valid email address';
+                newErrors.email = t('valid_email_error');
             }
-            if (!formData.password || formData.password.length < 6) {
-                newErrors.password = 'Password must be at least 6 characters';
+            if (role === 'employer' && (!formData.password || formData.password.length < 6)) {
+                newErrors.password = t('password_min_length') || 'Password must be at least 6 characters';
+            } else if (role === 'worker' && formData.password && formData.password.length < 6) {
+                newErrors.password = t('password_min_length') || 'Password must be at least 6 characters';
             }
             if (formData.password !== formData.confirmPassword) {
-                newErrors.confirmPassword = 'Passwords do not match';
+                newErrors.confirmPassword = t('passwords_not_match') || 'Passwords do not match';
             }
         } else if (currentStep === 2 && role === 'worker') {
-            if (!formData.gender) newErrors.gender = 'Gender is required';
+            if (!formData.gender) newErrors.gender = t('gender_required') || 'Gender is required';
             if (!formData.workerType) {
-                newErrors.workerType = 'Select work type';
+                newErrors.workerType = t('worker_type_required') || 'Select work type';
             }
             if (!formData.isFresher && !formData.experience) {
-                newErrors.experience = 'Experience is required';
+                newErrors.experience = t('experience_required') || 'Experience is required';
             }
         } else if (currentStep === 2 && role === 'employer') {
-            if (!formData.companyName.trim()) newErrors.companyName = 'Company Name is required';
-            if (!formData.businessType) newErrors.businessType = 'Select business type';
-            if (!formData.employeeCount) newErrors.employeeCount = 'Select employee count';
+            if (!formData.companyName.trim()) newErrors.companyName = t('company_name_required') || 'Company Name is required';
+            if (!formData.businessType) newErrors.businessType = t('business_type_required') || 'Select business type';
+            if (!formData.employeeCount) newErrors.employeeCount = t('employee_count_required') || 'Select employee count';
         } else if (currentStep === 3 && role === 'employer') {
-            if (!formData.city.trim()) newErrors.city = 'City is required';
-            if (!formData.state) newErrors.state = 'Select state';
+            if (!formData.city.trim()) newErrors.city = t('city_required') || 'City is required';
+            if (!formData.state) newErrors.state = t('state_required') || 'Select state';
             if (!formData.pincode || !/^\d{6}$/.test(formData.pincode)) {
-                newErrors.pincode = 'Enter valid 6-digit pincode';
+                newErrors.pincode = t('valid_pincode_error') || 'Enter valid 6-digit pincode';
             }
         } else if (currentStep === 4 && role === 'employer') {
-            if (!formData.contactName.trim()) newErrors.contactName = 'Contact person name is required';
+            if (!formData.contactName.trim()) newErrors.contactName = t('contact_name_required') || 'Contact person name is required';
             if (!formData.contactPhone || !/^[6-9]\d{9}$/.test(formData.contactPhone)) {
-                newErrors.contactPhone = 'Enter valid 10-digit phone number';
+                newErrors.contactPhone = t('valid_mobile_error');
             }
         }
 
@@ -190,6 +194,22 @@ export default function RegisterScreen() {
 
     const handleNextWithStructure = async () => {
         if (validateStep(step)) {
+            if (step === 1) {
+                setLoading(true);
+                try {
+                    const res = await checkMobile(formData.mobile);
+                    if (res.exists) {
+                        Alert.alert(t('error_title') || 'Error', res.message);
+                        setLoading(false);
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error checking mobile:', error);
+                } finally {
+                    setLoading(false);
+                }
+            }
+
             if (step < totalSteps - 1) {
                 setStep(step + 1);
             } else {
@@ -234,7 +254,7 @@ export default function RegisterScreen() {
                     await initiateRegistration(submissionData);
                     setStep(totalSteps);
                 } catch (error) {
-                    Alert.alert('Registration Failed', error.response?.data?.message || 'Something went wrong');
+                    Alert.alert(t('registration_failed'), error.response?.data?.message || t('something_went_wrong'));
                 } finally {
                     setLoading(false);
                 }
@@ -244,7 +264,7 @@ export default function RegisterScreen() {
 
     const handleVerifyOtp = async () => {
         if (!otp || otp.length !== 6) {
-            Alert.alert('Error', 'Please enter valid 6-digit OTP');
+            Alert.alert(t('error_title'), t('valid_otp_error') || 'Please enter valid 6-digit OTP');
             return;
         }
         setLoading(true);
@@ -254,7 +274,7 @@ export default function RegisterScreen() {
             // Auto-login
             await login(userData);
 
-            Alert.alert('Success', 'Registration completed successfully!', [
+            Alert.alert(t('success'), t('registration_success'), [
                 {
                     text: 'OK',
                     onPress: () => {
@@ -267,7 +287,7 @@ export default function RegisterScreen() {
                 }
             ]);
         } catch (error) {
-            Alert.alert('Verification Failed', error.response?.data?.message || 'Invalid OTP');
+            Alert.alert(t('verification_failed') || 'Verification Failed', error.response?.data?.message || t('valid_otp_error') || 'Invalid OTP');
         } finally {
             setLoading(false);
         }
@@ -293,12 +313,12 @@ export default function RegisterScreen() {
 
     const renderStep1 = () => (
         <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Basic Details</Text>
-            <Input label="Full Name *" placeholder="Enter your full name" value={formData.name} onChangeText={(text) => setFormData({ ...formData, name: text })} error={errors.name} icon="person-outline" />
-            <Input label="Mobile Number *" placeholder="10-digit mobile number" value={formData.mobile} onChangeText={(text) => setFormData({ ...formData, mobile: text.replace(/[^0-9]/g, '').slice(0, 10) })} keyboardType="phone-pad" error={errors.mobile} maxLength={10} icon="call-outline" />
-            <Input label={role === 'employer' ? "Email *" : "Email (Optional)"} placeholder="Enter your email" value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} keyboardType="email-address" error={errors.email} autoCapitalize="none" icon="mail-outline" />
-            <Input label="Password *" placeholder="Create password" value={formData.password} onChangeText={(text) => setFormData({ ...formData, password: text })} isPassword error={errors.password} icon="lock-closed-outline" />
-            <Input label="Confirm Password *" placeholder="Confirm password" value={formData.confirmPassword} onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })} isPassword error={errors.confirmPassword} icon="lock-closed-outline" />
+            <Text style={styles.sectionTitle}>{t('basic_details')}</Text>
+            <Input label={`${t('full_name')} *`} placeholder={t('enter_full_name')} value={formData.name} onChangeText={(text) => setFormData({ ...formData, name: text })} error={errors.name} icon="person-outline" />
+            <Input label={`${t('mobile')} *`} placeholder={t('mobile_placeholder')} value={formData.mobile} onChangeText={(text) => setFormData({ ...formData, mobile: text.replace(/[^0-9]/g, '').slice(0, 10) })} keyboardType="phone-pad" error={errors.mobile} maxLength={10} icon="call-outline" />
+            <Input label={role === 'employer' ? `${t('email')} *` : `${t('email')} (${t('optional') || 'Optional'})`} placeholder={t('enter_email_address')} value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} keyboardType="email-address" error={errors.email} autoCapitalize="none" icon="mail-outline" />
+            <Input label={role === 'employer' ? `${t('enter_password')} *` : `${t('enter_password')} (${t('optional') || 'Optional'})`} placeholder={t('create_password') || 'Create password'} value={formData.password} onChangeText={(text) => setFormData({ ...formData, password: text })} isPassword error={errors.password} icon="lock-closed-outline" />
+            <Input label={role === 'employer' ? `${t('confirm_password') || 'Confirm Password'} *` : `${t('confirm_password') || 'Confirm Password'} (${t('optional') || 'Optional'})`} placeholder={t('confirm_password') || 'Confirm password'} value={formData.confirmPassword} onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })} isPassword error={errors.confirmPassword} icon="lock-closed-outline" />
         </View>
     );
 
@@ -309,72 +329,72 @@ export default function RegisterScreen() {
 
         return (
             <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>Professional Details</Text>
-                {renderDropdownTrigger('Gender *', formData.gender, ['Male', 'Female', 'Other'], 'gender', errors.gender)}
+                <Text style={styles.sectionTitle}>{t('professional_details')}</Text>
+                {renderDropdownTrigger(`${t('gender')} *`, formData.gender, [t('gender_male'), t('gender_female'), t('gender_other')], 'gender', errors.gender)}
 
                 {/* Worker Type - Single Select */}
-                {renderDropdownTrigger('Work Type *', formData.workerType, WORKER_TYPES, 'workerType', errors.workerType, false)}
+                {renderDropdownTrigger(`${t('worker_type')} *`, formData.workerType, WORKER_TYPES, 'workerType', errors.workerType, false)}
 
                 {/* Skills - Multi Select - Only show if Worker Type is selected */}
                 {formData.workerType ? (
-                    renderDropdownTrigger('Skills', formData.skills, skillList, 'skills', errors.skills, true)
+                    renderDropdownTrigger(t('skills'), formData.skills, skillList, 'skills', errors.skills, true)
                 ) : null}
 
                 <View style={styles.checkboxContainer}>
                     <TouchableOpacity style={[styles.checkbox, formData.isFresher && styles.checkboxChecked]} onPress={() => setFormData({ ...formData, isFresher: !formData.isFresher, experience: '' })}>
                         {formData.isFresher && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
                     </TouchableOpacity>
-                    <Text style={styles.checkboxLabel}>I am a Fresher (No Experience)</Text>
+                    <Text style={styles.checkboxLabel}>{t('fresher_label') || 'I am a Fresher (No Experience)'}</Text>
                 </View>
-                {!formData.isFresher && <Input label="Experience (Years) *" placeholder="e.g. 2.5" value={formData.experience} onChangeText={(text) => setFormData({ ...formData, experience: text })} keyboardType="numeric" error={errors.experience} />}
-                <Input label="City/State" placeholder="Current Location" value={formData.locationName} onChangeText={(text) => setFormData({ ...formData, locationName: text })} icon="location-outline" />
+                {!formData.isFresher && <Input label={t('exp_years_label') || 'Experience (Years) *'} placeholder="e.g. 2.5" value={formData.experience} onChangeText={(text) => setFormData({ ...formData, experience: text.replace(/[^0-9.]/g, '') })} keyboardType="numeric" error={errors.experience} />}
+                <Input label={t('city_state') || 'City/State'} placeholder={t('current_location_placeholder')} value={formData.locationName} onChangeText={(text) => setFormData({ ...formData, locationName: text })} icon="location-outline" />
             </View>
         );
     };
 
     const renderCompanyInfo = () => (
         <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Company Information</Text>
-            <Input label="Company Name *" placeholder="Enter company name" value={formData.companyName} onChangeText={(text) => setFormData({ ...formData, companyName: text })} error={errors.companyName} icon="business-outline" />
-            {renderDropdownTrigger('Business Type *', formData.businessType, BUSINESS_TYPES, 'businessType', errors.businessType)}
-            {renderDropdownTrigger('Number of Employees *', formData.employeeCount, EMPLOYEE_COUNTS, 'employeeCount', errors.employeeCount)}
-            <Input label="Founded Year (Optional)" placeholder="e.g., 2015" value={formData.foundedYear} onChangeText={(text) => setFormData({ ...formData, foundedYear: text.replace(/[^0-9]/g, '').slice(0, 4) })} keyboardType="numeric" maxLength={4} />
-            <Input label="Company Website (Optional)" placeholder="https://yourcompany.com" value={formData.website} onChangeText={(text) => setFormData({ ...formData, website: text })} autoCapitalize="none" keyboardType="url" />
-            <Input label="Description (Optional)" placeholder="Briefly describe your company..." value={formData.description} onChangeText={(text) => setFormData({ ...formData, description: text })} multiline numberOfLines={3} style={{ height: 80, textAlignVertical: 'top' }} />
+            <Text style={styles.sectionTitle}>{t('company_info')}</Text>
+            <Input label={`${t('company_name')} *`} placeholder={t('enter_company_name')} value={formData.companyName} onChangeText={(text) => setFormData({ ...formData, companyName: text })} error={errors.companyName} icon="business-outline" />
+            {renderDropdownTrigger(`${t('business_type')} *`, formData.businessType, BUSINESS_TYPES, 'businessType', errors.businessType)}
+            {renderDropdownTrigger(`${t('employee_count')} *`, formData.employeeCount, EMPLOYEE_COUNTS, 'employeeCount', errors.employeeCount)}
+            <Input label={`${t('founded_year')} (${t('optional') || 'Optional'})`} placeholder={t('founded_year_placeholder')} value={formData.foundedYear} onChangeText={(text) => setFormData({ ...formData, foundedYear: text.replace(/[^0-9]/g, '').slice(0, 4) })} keyboardType="numeric" maxLength={4} />
+            <Input label={`${t('website')} (${t('optional') || 'Optional'})`} placeholder="https://yourcompany.com" value={formData.website} onChangeText={(text) => setFormData({ ...formData, website: text })} autoCapitalize="none" keyboardType="url" />
+            <Input label={`${t('description')} (${t('optional') || 'Optional'})`} placeholder={t('company_description_placeholder')} value={formData.description} onChangeText={(text) => setFormData({ ...formData, description: text })} multiline numberOfLines={3} style={{ height: 80, textAlignVertical: 'top' }} />
         </View>
     );
 
     const renderCompanyAddress = () => (
         <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Company Address</Text>
-            <Input label="Street Address (Optional)" placeholder="Enter street address" value={formData.street} onChangeText={(text) => setFormData({ ...formData, street: text })} />
-            <Input label="City *" placeholder="Enter city" value={formData.city} onChangeText={(text) => setFormData({ ...formData, city: text })} error={errors.city} />
-            {renderDropdownTrigger('State *', formData.state, INDIAN_STATES, 'state', errors.state)}
-            <Input label="Pincode *" placeholder="Enter 6-digit pincode" value={formData.pincode} onChangeText={(text) => setFormData({ ...formData, pincode: text.replace(/[^0-9]/g, '').slice(0, 6) })} keyboardType="numeric" error={errors.pincode} maxLength={6} />
-            <Input label="Google Maps Link (Optional)" placeholder="Paste Google Maps link" value={formData.mapsLink} onChangeText={(text) => setFormData({ ...formData, mapsLink: text })} autoCapitalize="none" />
+            <Text style={styles.sectionTitle}>{t('company_address')}</Text>
+            <Input label={`${t('street')} (${t('optional') || 'Optional'})`} placeholder={t('street_placeholder')} value={formData.street} onChangeText={(text) => setFormData({ ...formData, street: text })} />
+            <Input label={`${t('city') || 'City'} *`} placeholder={t('enter_city') || 'Enter city'} value={formData.city} onChangeText={(text) => setFormData({ ...formData, city: text })} error={errors.city} />
+            {renderDropdownTrigger(`${t('state')} *`, formData.state, INDIAN_STATES, 'state', errors.state)}
+            <Input label={`${t('pincode')} *`} placeholder={t('pincode_placeholder') || 'Enter 6-digit pincode'} value={formData.pincode} onChangeText={(text) => setFormData({ ...formData, pincode: text.replace(/[^0-9]/g, '').slice(0, 6) })} keyboardType="numeric" error={errors.pincode} maxLength={6} />
+            <Input label={`${t('maps_link') || 'Google Maps Link'} (${t('optional') || 'Optional'})`} placeholder={t('maps_link_placeholder') || 'Paste Google Maps link'} value={formData.mapsLink} onChangeText={(text) => setFormData({ ...formData, mapsLink: text })} autoCapitalize="none" />
         </View>
     );
 
     const renderContactPerson = () => (
         <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Contact Person</Text>
-            <Input label="Contact Person Name *" placeholder="Enter name" value={formData.contactName} onChangeText={(text) => setFormData({ ...formData, contactName: text })} error={errors.contactName} autoCapitalize="words" icon="person-outline" />
-            <Input label="Designation (Optional)" placeholder="e.g., HR Manager" value={formData.contactDesignation} onChangeText={(text) => setFormData({ ...formData, contactDesignation: text })} />
-            <Input label="Contact Phone *" placeholder="Enter phone number" value={formData.contactPhone} onChangeText={(text) => setFormData({ ...formData, contactPhone: text.replace(/[^0-9]/g, '').slice(0, 10) })} keyboardType="phone-pad" error={errors.contactPhone} maxLength={10} icon="call-outline" />
-            <Input label="Contact Email (Optional)" placeholder="Enter email" value={formData.contactEmail} onChangeText={(text) => setFormData({ ...formData, contactEmail: text })} keyboardType="email-address" autoCapitalize="none" icon="mail-outline" />
+            <Text style={styles.sectionTitle}>{t('contact_person')}</Text>
+            <Input label={`${t('contact_name')} *`} placeholder={t('contact_person_name_placeholder')} value={formData.contactName} onChangeText={(text) => setFormData({ ...formData, contactName: text })} error={errors.contactName} autoCapitalize="words" icon="person-outline" />
+            <Input label={`${t('designation')} (${t('optional') || 'Optional'})`} placeholder="e.g., HR Manager" value={formData.contactDesignation} onChangeText={(text) => setFormData({ ...formData, contactDesignation: text })} />
+            <Input label={`${t('contact_phone')} *`} placeholder={t('contact_number_placeholder')} value={formData.contactPhone} onChangeText={(text) => setFormData({ ...formData, contactPhone: text.replace(/[^0-9]/g, '').slice(0, 10) })} keyboardType="phone-pad" error={errors.contactPhone} maxLength={10} icon="call-outline" />
+            <Input label={`${t('contact_email')} (${t('optional') || 'Optional'})`} placeholder={t('contact_email_placeholder')} value={formData.contactEmail} onChangeText={(text) => setFormData({ ...formData, contactEmail: text })} keyboardType="email-address" autoCapitalize="none" icon="mail-outline" />
         </View>
     );
 
     const renderDocuments = () => (
         <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>KYC Verification</Text>
+            <Text style={styles.sectionTitle}>{t('kyc_verification')}</Text>
             <View style={styles.kycInfoBox}>
                 <Ionicons name="shield-checkmark-outline" size={40} color={COLORS.primary} />
-                <Text style={styles.kycTitle}>Build Trust</Text>
-                <Text style={styles.kycSubtitle}>Verified profiles get 3x more responses from workers.</Text>
+                <Text style={styles.kycTitle}>{t('build_trust_title')}</Text>
+                <Text style={styles.kycSubtitle}>{t('build_trust_desc')}</Text>
             </View>
-            <Input label="GST Number (Optional)" placeholder="Enter 15-digit GST number" value={formData.gstNumber} onChangeText={(text) => setFormData({ ...formData, gstNumber: text.toUpperCase().slice(0, 15) })} autoCapitalize="characters" maxLength={15} />
-            <Text style={styles.noteText}>You can upload additional documents from your profile later.</Text>
+            <Input label={`${t('gst_number')} (${t('optional') || 'Optional'})`} placeholder="Enter 15-digit GST number" value={formData.gstNumber} onChangeText={(text) => setFormData({ ...formData, gstNumber: text.toUpperCase().slice(0, 15) })} autoCapitalize="characters" maxLength={15} />
+            <Text style={styles.noteText}>{t('kyc_note')}</Text>
         </View>
     );
 
@@ -383,12 +403,12 @@ export default function RegisterScreen() {
             <View style={styles.otpIconContainer}>
                 <Ionicons name="shield-checkmark" size={60} color={COLORS.primary} />
             </View>
-            <Text style={styles.otpTitle}>Verify OTP</Text>
-            <Text style={styles.otpSubtitle}>Enter the 6-digit code sent to +91 {formData.mobile}</Text>
+            <Text style={styles.otpTitle}>{t('verify_otp')}</Text>
+            <Text style={styles.otpSubtitle}>{t('enter_otp_sent_to')} +91 {formData.mobile}</Text>
             <View style={styles.otpContainer}>
                 <OtpInput value={otp} onChange={setOtp} length={6} />
             </View>
-            <Button title="Verify & Register" onPress={handleVerifyOtp} />
+            <Button title={t('verify_register')} onPress={handleVerifyOtp} />
         </View>
     );
 
@@ -414,37 +434,43 @@ export default function RegisterScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            {loading && <LoadingSpinner fullScreen={true} message={"Processing..."} />}
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()} style={styles.backButton}>
-                        <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>{step === totalSteps ? 'Verification' : `Create ${role === 'worker' ? 'Worker' : 'Employer'} Account`}</Text>
-                    <View style={{ width: 24 }} />
-                </View>
-
-                {step < totalSteps && (
-                    <View style={styles.progressContainer}>
-                        <View style={[styles.progressBar, { width: `${(step / (totalSteps - 1)) * 100}%` }]} />
+        <SafeAreaView style={[styles.container, { backgroundColor: COLORS.primary }]} edges={['top', 'left', 'right']}>
+            <StatusBar style="light" backgroundColor={COLORS.primary} />
+            <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+                {loading && <LoadingSpinner fullScreen={true} message={t('processing')} />}
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
+                    <View style={styles.header}>
+                        <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()} style={styles.backButton}>
+                            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>{step === totalSteps ? t('verification') : (role === 'worker' ? t('create_worker_account') : t('create_employer_account'))}</Text>
+                        <View style={[styles.roleSelectorButton, role === "worker" ? styles.roleSelectorButtonActive : styles.roleSelectorButtonInactive, { opacity: 0 }]}>
+                            {/* Hidden view to balance the flex header space for the title to be perfectly centered */}
+                            <Image source={require('../../assets/images/icon.png')} style={{ width: 32, height: 32 }} resizeMode="contain" />
+                        </View>
                     </View>
-                )}
 
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-                        {renderCurrentStep()}
-                        {step < totalSteps && (
-                            <View style={styles.footer}>
-                                <Button title="Next" onPress={handleNextWithStructure} />
-                                <TouchableOpacity style={styles.loginLink} onPress={() => router.push('/auth/login')}>
-                                    <Text style={styles.loginText}>Already have an account? <Text style={styles.loginTextBold}>Login</Text></Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-                    </Animated.View>
-                </ScrollView>
-            </KeyboardAvoidingView>
+                    {step < totalSteps && (
+                        <View style={styles.progressContainer}>
+                            <View style={[styles.progressBar, { width: `${(step / (totalSteps - 1)) * 100}%` }]} />
+                        </View>
+                    )}
+
+                    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+                            {renderCurrentStep()}
+                            {step < totalSteps && (
+                                <View style={styles.footer}>
+                                    <Button title={t('next')} onPress={handleNextWithStructure} />
+                                    <TouchableOpacity style={styles.loginLink} onPress={() => router.push('/auth/login')}>
+                                        <Text style={styles.loginText}>{t('already_have_account')} <Text style={styles.loginTextBold}>{t('login')}</Text></Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </Animated.View>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </View>
 
             {/* Selection Modal */}
             <Modal
@@ -456,7 +482,7 @@ export default function RegisterScreen() {
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setDropdownVisible(false)}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select {dropdownConfig.title}</Text>
+                            <Text style={styles.modalTitle}>{t('select_placeholder').replace('{title}', dropdownConfig.title)}</Text>
                             <TouchableOpacity onPress={() => setDropdownVisible(false)}>
                                 <Ionicons name="close" size={24} color={COLORS.text} />
                             </TouchableOpacity>
@@ -480,13 +506,13 @@ export default function RegisterScreen() {
                             />
                         ) : (
                             <View style={styles.emptyContainer}>
-                                <Text style={styles.emptyText}>No items available</Text>
+                                <Text style={styles.emptyText}>{t('no_items_available')}</Text>
                             </View>
                         )}
 
                         {dropdownConfig.multiSelect && (
                             <View style={{ padding: 16 }}>
-                                <Button title="Done" onPress={() => setDropdownVisible(false)} />
+                                <Button title={t('done')} onPress={() => setDropdownVisible(false)} />
                             </View>
                         )}
                     </View>
@@ -501,7 +527,7 @@ const styles = StyleSheet.create({
     keyboardView: { flex: 1 },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
     backButton: { padding: 8 },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
+    headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, flex: 1, textAlign: 'center', marginHorizontal: 10 },
     progressContainer: { height: 4, backgroundColor: COLORS.border, marginHorizontal: 20, marginTop: 10, borderRadius: 2, overflow: 'hidden' },
     progressBar: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 2 },
     scrollContent: { padding: 24, paddingBottom: 40 },

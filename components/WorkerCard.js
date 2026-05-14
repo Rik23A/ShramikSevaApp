@@ -2,10 +2,12 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/config';
+import { useLanguage } from '../context/LanguageContext';
 
 import { getFullImageUrl } from '../utils/imageUtil';
 
 const WorkerCard = ({ worker, onPress, onHire }) => {
+    const { t } = useLanguage();
     const renderStars = (rating) => {
         const stars = [];
         const fullStars = Math.floor(rating);
@@ -39,7 +41,7 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
                     )}
                 </View>
                 <View style={styles.info}>
-                    <Text style={styles.name}>{worker.name || 'Worker'}</Text>
+                    <Text style={styles.name}>{worker.name || t('worker')}</Text>
                     <View style={styles.ratingContainer}>
                         {renderStars(worker.rating || 0)}
                         <Text style={styles.ratingText}>({worker.rating?.toFixed(1) || '0.0'})</Text>
@@ -49,7 +51,7 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
                 worker.availability === 'available' && styles.available
                 ]}>
                     <Text style={styles.availabilityText}>
-                        {worker.availability === 'available' ? 'Available' : 'Unavailable'}
+                        {worker.availability === 'available' ? t('available') : t('unavailable')}
                     </Text>
                 </View>
             </View>
@@ -58,7 +60,7 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
                 <View style={styles.typesContainer}>
                     {worker.workerType.slice(0, 2).map((type, index) => (
                         <View key={index} style={styles.typeBadge}>
-                            <Text style={styles.typeText}>{type}</Text>
+                            <Text style={styles.typeText}>{t(type.toLowerCase())}</Text>
                         </View>
                     ))}
                     {worker.workerType.length > 2 && (
@@ -71,7 +73,7 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
                 <View style={styles.detailItem}>
                     <Ionicons name="briefcase-outline" size={14} color={COLORS.textSecondary} />
                     <Text style={styles.detailText}>
-                        {worker.isFresher ? 'Fresher' : `${worker.experience || 0} yrs exp`}
+                        {worker.isFresher ? t('fresher') : t('yrs_exp', { exp: worker.experience || 0 })}
                     </Text>
                 </View>
                 {(worker.locationName || (typeof worker.location === 'string' && worker.location)) && (
@@ -88,7 +90,7 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
                 <View style={styles.skillsContainer}>
                     {worker.skills.slice(0, 4).map((skill, index) => (
                         <View key={index} style={styles.skillBadge}>
-                            <Text style={styles.skillText}>{skill}</Text>
+                            <Text style={styles.skillText}>{t(skill.toLowerCase())}</Text>
                         </View>
                     ))}
                 </View>
@@ -96,7 +98,7 @@ const WorkerCard = ({ worker, onPress, onHire }) => {
 
             {onHire && (
                 <TouchableOpacity style={styles.hireButton} onPress={onHire}>
-                    <Text style={styles.hireButtonText}>Hire Worker</Text>
+                    <Text style={styles.hireButtonText}>{t('hire_worker')}</Text>
                 </TouchableOpacity>
             )}
         </TouchableOpacity>

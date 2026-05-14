@@ -5,10 +5,12 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import NotificationBell from '../../components/NotificationBell';
 
 export default function EmployerLayout() {
     const insets = useSafeAreaInsets();
+    const { t } = useLanguage();
 
     const HeaderRight = () => (
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
@@ -25,7 +27,7 @@ export default function EmployerLayout() {
                 }}
             >
                 <Ionicons name="add-circle" size={18} color={COLORS.white} />
-                <Text style={{ color: COLORS.white, fontSize: 13, fontWeight: 'bold', marginLeft: 4 }}>Post Job</Text>
+                <Text style={{ color: COLORS.white, fontSize: 13, fontWeight: 'bold', marginLeft: 4 }}>{t('post_job')}</Text>
             </TouchableOpacity>
             <NotificationBell iconColor={COLORS.white} />
         </View>
@@ -58,7 +60,7 @@ export default function EmployerLayout() {
                 <Tabs.Screen
                     name="dashboard"
                     options={{
-                        title: 'Home',
+                        title: t('nav_home'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="home" size={size} color={color} />
                         ),
@@ -69,68 +71,68 @@ export default function EmployerLayout() {
                     name="post-job"
                     options={{
                         href: null, // Hide from tab bar
-                        title: 'Post Job',
-                        headerTitle: 'Post New Job',
+                        title: t('post_job'),
+                        headerTitle: t('post_new_job'),
                     }}
                 />
                 <Tabs.Screen
                     name="my-jobs"
                     options={{
-                        title: 'My Jobs',
+                        title: t('nav_my_jobs'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="briefcase" size={size} color={color} />
                         ),
-                        headerTitle: 'My Jobs',
+                        headerTitle: t('nav_my_jobs'),
                     }}
                 />
                 <Tabs.Screen
                     name="messages"
                     options={{
-                        title: 'Messages',
+                        title: t('nav_messages'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="chatbubbles" size={size} color={color} />
                         ),
-                        headerTitle: 'Messages',
+                        headerTitle: t('nav_messages'),
                     }}
                 />
                 <Tabs.Screen
                     name="workers"
                     options={{
-                        title: 'Workers',
+                        title: t('nav_workers'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="people" size={size} color={color} />
                         ),
-                        headerTitle: 'Find Workers',
+                        headerTitle: t('find_workers'),
                     }}
                 />
                 <Tabs.Screen
                     name="subscription-plans"
                     options={{
-                        title: 'Plans',
+                        title: t('nav_plans'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="card" size={size} color={color} />
                         ),
-                        headerTitle: 'Subscription Plans',
+                        headerTitle: t('subscription_plans') || 'Subscription Plans',
                     }}
                 />
                 <Tabs.Screen
                     name="hired-jobs"
                     options={{
-                        title: 'Hired',
+                        title: t('nav_hired'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="checkmark-done-circle" size={size} color={color} />
                         ),
-                        headerTitle: 'Hired Workers',
+                        headerTitle: t('hired_workers'),
                     }}
                 />
                 <Tabs.Screen
                     name="profile"
                     options={{
-                        title: 'Profile',
+                        title: t('nav_profile'),
                         tabBarIcon: ({ color, size }) => (
                             <Ionicons name="person" size={size} color={color} />
                         ),
-                        headerTitle: 'Company Profile',
+                        headerTitle: t('company_profile'),
                     }}
                 />
                 <Tabs.Screen

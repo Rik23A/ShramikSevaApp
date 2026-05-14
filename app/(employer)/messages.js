@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -8,17 +8,19 @@ import {
     Image,
     TouchableOpacity
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, API_URL } from '../../constants/config';
 import { getConversations } from '../../services/messageService';
 import { useAuth } from '../../context/AuthContext';
 import { timeAgo } from '../../utils/dateUtils';
+import { useLanguage } from '../../context/LanguageContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { getFullImageUrl } from '../../utils/imageUtil';
 
 export default function EmployerMessagesScreen() {
     const { user } = useAuth();
+    const { t } = useLanguage();
     const router = useRouter();
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -38,9 +40,11 @@ export default function EmployerMessagesScreen() {
         }
     };
 
-    useEffect(() => {
-        fetchConversations();
-    }, [user]);
+    useFocusEffect(
+        useCallback(() => {
+            fetchConversations();
+        }, [user])
+    );
 
     const renderItem = ({ item }) => {
         const otherUser = item.members?.find(m => m._id !== user?._id) || {};
@@ -72,7 +76,7 @@ export default function EmployerMessagesScreen() {
                 <View style={styles.contentContainer}>
                     <View style={styles.headerRow}>
                         <Text style={[styles.userName, isUnread && styles.unreadText]} numberOfLines={1}>
-                            {otherUser.name || 'Worker'}
+                            {otherUser.name || t('worker')}
                         </Text>
                         {hasLastMessage && (
                             <View style={styles.timeContainer}>
@@ -89,7 +93,7 @@ export default function EmployerMessagesScreen() {
                         isUnread && styles.unreadMessage,
                         !hasLastMessage && styles.italicText
                     ]} numberOfLines={1}>
-                        {hasLastMessage ? lastMsg.text : 'Start a conversation'}
+                        {hasLastMessage ? lastMsg.text : t('start_conversation')}
                     </Text>
                 </View>
 
@@ -99,7 +103,7 @@ export default function EmployerMessagesScreen() {
     };
 
     if (loading) {
-        return <LoadingSpinner fullScreen message="Loading messages..." />;
+        return <LoadingSpinner fullScreen message={t('loading_messages')} />;
     }
 
     return (
@@ -119,8 +123,8 @@ export default function EmployerMessagesScreen() {
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Ionicons name="chatbubbles-outline" size={60} color={COLORS.textSecondary} />
-                        <Text style={styles.emptyTitle}>No Conversations</Text>
-                        <Text style={styles.emptySubtitle}>Messages from workers will appear here</Text>
+                        <Text style={styles.emptyTitle}>{t('no_conversations')}</Text>
+                        <Text style={styles.emptySubtitle}>{t('no_conversations_subtitle')}</Text>
                     </View>
                 }
                 ItemSeparatorComponent={() => <View style={styles.separator} />}

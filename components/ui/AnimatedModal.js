@@ -8,10 +8,12 @@ import {
     Animated,
     Dimensions,
     StatusBar,
+    ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -32,13 +34,18 @@ export default function AnimatedModal({
     type = 'subscription',
     title,
     message,
-    primaryButtonText = 'Continue',
-    secondaryButtonText = 'Cancel',
+    primaryButtonText,
+    secondaryButtonText,
     onPrimaryPress,
     onSecondaryPress,
     onClose,
     icon,
+    children,
 }) {
+    const { t } = useLanguage();
+    const activePrimaryText = primaryButtonText || t('continue');
+    const activeSecondaryText = secondaryButtonText || t('cancel');
+
     const scaleAnim = useRef(new Animated.Value(0)).current;
     const opacityAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(50)).current;
@@ -185,85 +192,97 @@ export default function AnimatedModal({
                         },
                     ]}
                 >
-                    {/* Gradient Background Header */}
-                    <LinearGradient
-                        colors={iconConfig.colors}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.headerGradient}
+                    <ScrollView
+                        bounces={false}
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ flexGrow: 0 }}
                     >
-                        {/* Decorative circles */}
-                        <View style={[styles.decorCircle, styles.decorCircle1]} />
-                        <View style={[styles.decorCircle, styles.decorCircle2]} />
-                        <View style={[styles.decorCircle, styles.decorCircle3]} />
-                    </LinearGradient>
-
-                    {/* Floating Icon */}
-                    <Animated.View
-                        style={[
-                            styles.iconContainer,
-                            {
-                                transform: [
-                                    { scale: pulseAnim },
-                                    ...(type === 'expired' || type === 'limit'
-                                        ? [{ rotate: rotateInterpolate }]
-                                        : []),
-                                ],
-                            },
-                        ]}
-                    >
+                        {/* Gradient Background Header */}
                         <LinearGradient
                             colors={iconConfig.colors}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
-                            style={styles.iconGradient}
+                            style={styles.headerGradient}
                         >
-                            <Ionicons
-                                name={icon || iconConfig.name}
-                                size={40}
-                                color="#FFFFFF"
-                            />
+                            {/* Decorative circles */}
+                            <View style={[styles.decorCircle, styles.decorCircle1]} />
+                            <View style={[styles.decorCircle, styles.decorCircle2]} />
+                            <View style={[styles.decorCircle, styles.decorCircle3]} />
                         </LinearGradient>
-                    </Animated.View>
 
-                    {/* Content */}
-                    <View style={styles.content}>
-                        <Text style={styles.title}>{title}</Text>
-                        <Text style={styles.message}>{message}</Text>
-
-                        {/* Buttons */}
-                        <View style={styles.buttonContainer}>
-                            <TouchableOpacity
-                                style={styles.primaryButton}
-                                onPress={onPrimaryPress}
-                                activeOpacity={0.8}
+                        {/* Floating Icon */}
+                        <Animated.View
+                            style={[
+                                styles.iconContainer,
+                                {
+                                    transform: [
+                                        { scale: pulseAnim },
+                                        ...(type === 'expired' || type === 'limit'
+                                            ? [{ rotate: rotateInterpolate }]
+                                            : []),
+                                    ],
+                                },
+                            ]}
+                        >
+                            <LinearGradient
+                                colors={iconConfig.colors}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.iconGradient}
                             >
-                                <LinearGradient
-                                    colors={iconConfig.colors}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.primaryButtonGradient}
-                                >
-                                    <Text style={styles.primaryButtonText}>
-                                        {primaryButtonText}
-                                    </Text>
-                                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
-                                </LinearGradient>
-                            </TouchableOpacity>
+                                <Ionicons
+                                    name={icon || iconConfig.name}
+                                    size={40}
+                                    color="#FFFFFF"
+                                />
+                            </LinearGradient>
+                        </Animated.View>
 
-                            {secondaryButtonText && (
-                                <TouchableOpacity
-                                    style={styles.secondaryButton}
-                                    onPress={onSecondaryPress || onClose}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.secondaryButtonText}>
-                                        {secondaryButtonText}
-                                    </Text>
-                                </TouchableOpacity>
+                        {/* Content */}
+                        <View style={styles.content}>
+                            {children ? (
+                                children
+                            ) : (
+                                <>
+                                    <Text style={styles.title}>{title}</Text>
+                                    <Text style={styles.message}>{message}</Text>
+
+                                    {/* Buttons */}
+                                    <View style={styles.buttonContainer}>
+                                        <TouchableOpacity
+                                            style={styles.primaryButton}
+                                            onPress={onPrimaryPress}
+                                            activeOpacity={0.8}
+                                        >
+                                            <LinearGradient
+                                                colors={iconConfig.colors}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 0 }}
+                                                style={styles.primaryButtonGradient}
+                                            >
+                                                <Text style={styles.primaryButtonText}>
+                                                    {activePrimaryText}
+                                                </Text>
+                                                <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                                            </LinearGradient>
+                                        </TouchableOpacity>
+
+                                        {secondaryButtonText && (
+                                            <TouchableOpacity
+                                                style={styles.secondaryButton}
+                                                onPress={onSecondaryPress || onClose}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={styles.secondaryButtonText}>
+                                                    {activeSecondaryText}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                </>
                             )}
                         </View>
-                    </View>
+                    </ScrollView>
 
                     {/* Close button */}
                     <TouchableOpacity
@@ -296,6 +315,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 28,
         overflow: 'hidden',
+        maxHeight: height * 0.85,
         elevation: 20,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 20 },

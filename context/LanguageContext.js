@@ -34,7 +34,8 @@ export const LanguageProvider = ({ children }) => {
         }
     };
 
-    const t = (key) => {
+    const t = (key, params = {}) => {
+        if (!key || typeof key !== 'string') return key || '';
         const keys = key.split('.');
         let value = translations[locale];
 
@@ -43,7 +44,20 @@ export const LanguageProvider = ({ children }) => {
             if (!value) break;
         }
 
-        return value || translations['en'][key] || key;
+        if (!value) {
+            value = translations['en'][key] || key;
+        }
+
+        // Replace placeholders like {name} with values from params
+        if (value && typeof value === 'string') {
+            Object.keys(params).forEach(paramKey => {
+                const placeholder = `{${paramKey}}`;
+                // More compatible way to replace all occurrences
+                value = value.split(placeholder).join(params[paramKey]);
+            });
+        }
+
+        return value;
     };
 
     return (

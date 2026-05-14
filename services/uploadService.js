@@ -1,5 +1,4 @@
 import API from './api';
-import { getToken } from '../utils/storage';
 import { API_URL } from '../constants/config';
 
 /**
@@ -10,16 +9,16 @@ import { API_URL } from '../constants/config';
 export const uploadFile = async (file, onUploadProgress) => {
     const formData = new FormData();
 
-    // Determine correct MIME type (Expo Image Picker returns 'image' which is not a valid MIME type)
+    // Determine correct MIME type
     const getMimeType = (file) => {
         if (file.mimeType) return file.mimeType;
-        if (file.type === 'image') return 'image/jpeg'; // Default for images
-        if (file.type === 'video') return 'video/mp4';  // Default for videos
-        return file.type || 'image/jpeg'; // Fallback
+        if (file.type === 'image') return 'image/jpeg';
+        if (file.type === 'video') return 'video/mp4';
+        return file.type || 'application/octet-stream';
     };
 
     const fileType = getMimeType(file);
-    const fileName = file.name || file.fileName || `upload-${Date.now()}.jpg`;
+    const fileName = file.name || file.fileName || `upload-${Date.now()}`;
 
     // Handle React Native file structure
     formData.append('file', {
@@ -28,35 +27,27 @@ export const uploadFile = async (file, onUploadProgress) => {
         name: fileName,
     });
 
-    const token = await getToken();
-    console.log('Uploading file:', {
-        uri: file.uri,
-        type: file.type,
-        name: file.name
-    });
-    console.log('Upload Target:', `${API_URL}/upload`);
+    if (__DEV__) {
+        console.log('[Upload] Target:', `${API_URL}/upload`);
+        console.log('[Upload] File Info:', { uri: file.uri, type: fileType, name: fileName });
+    }
 
     try {
-        // Use fetch instead of Axios for better multipart handling in RN
-        const response = await fetch(`${API_URL}/upload`, {
-            method: 'POST',
-            body: formData,
+        const response = await API.post('/upload', formData, {
             headers: {
-                'Authorization': token ? `Bearer ${token}` : '',
-                'Accept': 'application/json',
-                // Important: Do NOT set Content-Type header, let fetch set it with boundary
+                'Content-Type': 'multipart/form-data',
+            },
+            onUploadProgress: (progressEvent) => {
+                if (onUploadProgress) {
+                    const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    onUploadProgress(progress);
+                }
             },
         });
 
-        const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.message || 'Upload failed');
-        }
-
-        return result;
+        return response.data;
     } catch (error) {
-        console.error('Upload error:', error);
+        console.error('Upload error:', error.response?.data || error.message);
         throw error;
     }
 };

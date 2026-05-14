@@ -13,6 +13,7 @@ import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS, API_URL } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import { getInvoices, downloadInvoice } from '../../services/subscriptionService';
 import { getToken } from '../../utils/storage';
 import Card from '../../components/ui/Card';
@@ -20,6 +21,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Button from '../../components/ui/Button';
 
 export default function BillingScreen() {
+    const { t } = useLanguage();
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -34,7 +36,7 @@ export default function BillingScreen() {
             setInvoices(data);
         } catch (error) {
             console.error('Failed to fetch invoices:', error);
-            Alert.alert('Error', 'Failed to load invoices. Please try again later.');
+            Alert.alert(t('error_title'), t('error_load_invoices'));
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -52,7 +54,7 @@ export default function BillingScreen() {
 
     const handleView = async (invoice) => {
         if (!invoice.pdfUrl) {
-            Alert.alert('Info', 'Invoice PDF is not yet generated or available.');
+            Alert.alert(t('info'), t('invoice_not_generated') || 'Invoice PDF is not yet generated or available.');
             return;
         }
 
@@ -67,11 +69,11 @@ export default function BillingScreen() {
             console.log('Mobile Billing: Opening PDF:', urlWithToken);
             Linking.openURL(urlWithToken).catch(err => {
                 console.error('Failed to open URL:', err);
-                Alert.alert('Error', 'Could not open the invoice PDF.');
+                Alert.alert(t('error_title'), t('error_open_pdf'));
             });
         } catch (error) {
             console.error('View error:', error);
-            Alert.alert('Error', 'Failed to get auth token.');
+            Alert.alert(t('error_title'), t('error_auth_token'));
         }
     };
 
@@ -84,7 +86,7 @@ export default function BillingScreen() {
             Linking.openURL(url);
         } catch (error) {
             console.error('Download error:', error);
-            Alert.alert('Error', 'Failed to trigger download.');
+            Alert.alert(t('error_title'), t('error_download_trigger'));
         } finally {
             setDownloading(null);
         }
@@ -104,7 +106,7 @@ export default function BillingScreen() {
     };
 
     if (loading && !refreshing) {
-        return <LoadingSpinner fullScreen message="Loading invoices..." />;
+        return <LoadingSpinner fullScreen message={t('loading_invoices') || 'Loading invoices...'} />;
     }
 
     return (
@@ -112,7 +114,7 @@ export default function BillingScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    title: 'Billing & Invoices',
+                    title: t('billing_invoices'),
                     headerStyle: { backgroundColor: COLORS.primary },
                     headerTintColor: COLORS.white,
                 }}
@@ -126,16 +128,16 @@ export default function BillingScreen() {
                 }
             >
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Subscription History</Text>
-                    <Text style={styles.headerSubtitle}>View and manage your plan invoices</Text>
+                    <Text style={styles.headerTitle}>{t('sub_history')}</Text>
+                    <Text style={styles.headerSubtitle}>{t('view_manage_invoices')}</Text>
                 </View>
 
                 {invoices.length === 0 ? (
                     <View style={styles.emptyContainer}>
                         <Ionicons name="document-text-outline" size={64} color={COLORS.border} />
-                        <Text style={styles.emptyText}>No invoices found</Text>
+                        <Text style={styles.emptyText}>{t('no_invoices')}</Text>
                         <Button
-                            title="Refresh"
+                            title={t('refresh')}
                             onPress={onRefresh}
                             style={styles.refreshButton}
                         />
@@ -151,12 +153,12 @@ export default function BillingScreen() {
                                     <View>
                                         <Text style={styles.invoiceNumber}>{invoice.invoiceNumber}</Text>
                                         <Text style={styles.planType}>
-                                            {invoice.subscription?.planType || 'Subscription'} Plan
+                                            {(invoice.subscription?.planType ? t(invoice.subscription.planType) : 'Subscription')} Plan
                                         </Text>
                                     </View>
                                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(invoice.status) + '20' }]}>
                                         <Text style={[styles.statusText, { color: getStatusColor(invoice.status) }]}>
-                                            {invoice.status.toUpperCase()}
+                                            {(invoice.status || 'pending').toUpperCase()}
                                         </Text>
                                     </View>
                                 </View>
@@ -165,13 +167,13 @@ export default function BillingScreen() {
 
                                 <View style={styles.cardContent}>
                                     <View style={styles.infoRow}>
-                                        <Text style={styles.infoLabel}>Date</Text>
+                                        <Text style={styles.infoLabel}>{t('date')}</Text>
                                         <Text style={styles.infoValue}>
                                             {new Date(invoice.issueDate).toLocaleDateString()}
                                         </Text>
                                     </View>
                                     <View style={styles.infoRow}>
-                                        <Text style={styles.infoLabel}>Amount</Text>
+                                        <Text style={styles.infoLabel}>{t('amount')}</Text>
                                         <Text style={styles.amount}>₹{invoice.totalAmount.toFixed(2)}</Text>
                                     </View>
                                 </View>
@@ -182,7 +184,7 @@ export default function BillingScreen() {
                                         onPress={() => handleView(invoice)}
                                     >
                                         <Ionicons name="eye-outline" size={18} color={COLORS.primary} />
-                                        <Text style={styles.actionButtonText}>View</Text>
+                                        <Text style={styles.actionButtonText}>{t('view_invoice')}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={[styles.actionButton, styles.downloadButton]}
@@ -195,7 +197,7 @@ export default function BillingScreen() {
                                             color={COLORS.primary}
                                         />
                                         <Text style={styles.actionButtonText}>
-                                            {downloading === invoice._id ? "Processing..." : "Download"}
+                                            {downloading === invoice._id ? t('processing') : t('download_invoice')}
                                         </Text>
                                     </TouchableOpacity>
                                 </View>

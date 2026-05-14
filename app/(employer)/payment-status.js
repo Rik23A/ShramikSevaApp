@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../../constants/config';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -10,6 +11,12 @@ export default function PaymentStatusScreen() {
     const params = useLocalSearchParams();
     const { status, orderId, txnId } = params;
     const isSuccess = status === 'success';
+
+    // If Expo Router natively navigated us here from a deep link, 
+    // force close the Custom Tab overlay so the user can see this screen!
+    useEffect(() => {
+        WebBrowser.dismissBrowser();
+    }, []);
 
     return (
         <View style={styles.container}>
@@ -28,32 +35,43 @@ export default function PaymentStatusScreen() {
 
                 <Text style={styles.message}>
                     {isSuccess
-                        ? 'Your subscription has been upgraded successfully.'
-                        : 'There was an issue processing your payment. Please try again.'}
+                        ? t('sub_upgraded_success')
+                        : t('payment_issue_msg')}
                 </Text>
 
                 {orderId && (
                     <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Order ID:</Text>
+                        <Text style={styles.detailLabel}>{t('order_id')}</Text>
                         <Text style={styles.detailValue}>{orderId}</Text>
                     </View>
                 )}
 
                 {txnId && (
                     <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Transaction ID:</Text>
+                        <Text style={styles.detailLabel}>{t('transaction_id')}</Text>
                         <Text style={styles.detailValue}>{txnId}</Text>
                     </View>
                 )}
 
                 <TouchableOpacity
-                    style={[styles.button, isSuccess ? styles.successButton : styles.failureButton]}
-                    onPress={() => router.replace('/(employer)/dashboard')}
+                    style={[styles.button, isSuccess ? styles.successButton : styles.primaryButton]}
+                    onPress={() => router.replace(isSuccess ? '/(employer)/dashboard' : '/(employer)/subscription-plans')}
                 >
                     <Text style={styles.buttonText}>
-                        {t('back_to_dashboard')}
+                        {isSuccess ? t('back_to_dashboard') : (t('retry_payment') || 'Retry Payment')}
                     </Text>
                 </TouchableOpacity>
+
+                {!isSuccess && (
+                    <TouchableOpacity
+                        style={styles.secondaryButton}
+                        onPress={() => router.replace('/(employer)/dashboard')}
+                    >
+                        <Text style={styles.secondaryButtonText}>
+                            {t('back_to_dashboard')}
+                        </Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     );
@@ -130,10 +148,22 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     successButton: {
+        backgroundColor: COLORS.success,
+    },
+    primaryButton: {
         backgroundColor: COLORS.primary,
     },
     failureButton: {
         backgroundColor: COLORS.textSecondary,
+    },
+    secondaryButton: {
+        marginTop: 15,
+        paddingVertical: 10,
+    },
+    secondaryButtonText: {
+        color: COLORS.textSecondary,
+        fontSize: 14,
+        fontWeight: '600',
     },
     buttonText: {
         color: COLORS.white,

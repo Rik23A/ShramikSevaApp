@@ -1,12 +1,27 @@
-// Environment configuration for Shramik Seva App
-// Change API_URL based on your testing environment:
-// - Web Browser: http://localhost:5000/api
-// - Android Emulator: http://10.0.2.2:5000/api
-// - Physical Device: http://YOUR_MACHINE_IP:5000/api
-// - Production: https://your-production-url.com/api
+import Constants from 'expo-constants';
 
-// Use EXPO_PUBLIC_API_URL if available (for production builds), otherwise fallback to local development URLs
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.29:5000/api';
+const getDevIp = () => {
+    const hostUri = Constants.expoConfig?.hostUri;
+    if (!hostUri) return 'localhost';
+    return hostUri.split(':')[0];
+};
+
+const DEV_API_URL = `http://${getDevIp()}:5000/api`;
+const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+// In development, we want to prioritize the auto-detected IP over 'localhost' 
+// because 'localhost' doesn't work on physical devices or emulators.
+export const API_URL = (__DEV__ && (!ENV_API_URL || ENV_API_URL.includes('localhost')))
+    ? DEV_API_URL
+    : (ENV_API_URL || 'http://localhost:5000/api');
+
+if (__DEV__) {
+    console.log('[Config] Resolved API_URL:', API_URL);
+}
+
+// Frontend Web URL. In local dev, it runs on port 3000 instead of backend's 5000.
+export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ||
+    (API_URL.includes('5000') ? API_URL.replace('5000', '3000').replace('/api', '') : API_URL.replace('/api', ''));
 
 // Worker Types & Skills Mapping (Synced with Web)
 export const WORKER_SKILLS = {

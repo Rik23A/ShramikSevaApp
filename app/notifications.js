@@ -26,15 +26,21 @@ import { timeAgo } from '../utils/dateUtils';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function NotificationsScreen() {
     const router = useRouter();
     const { user } = useAuth();
-    const { socket, connected } = useSocket();
+    const { t } = useLanguage();
+    const { socket, connected, unreadCount: globalUnreadCount } = useSocket();
     const [notifications, setNotifications] = useState([]);
+    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
+    const [page, setPage] = useState(1);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
     const scrollY = new Animated.Value(0);
     const headerHeight = 120;
 
@@ -44,22 +50,61 @@ export default function NotificationsScreen() {
         extrapolate: 'clamp',
     });
 
-    const fetchNotifications = async () => {
+    const fetchNotifications = async (isInitial = false, isRefresh = false) => {
+        if (!hasMore && !isInitial && !isRefresh) return;
+        
         try {
-            const data = await getNotifications({ page: 1, limit: 50 });
-            setNotifications(data.notifications || []);
+            if (isInitial || isRefresh) {
+                setLoading(true);
+                setPage(1);
+            } else {
+                setLoadingMore(true);
+            }
+
+            const currentPage = (isInitial || isRefresh) ? 1 : page;
+            const params = { page: currentPage, limit: 15 };
+            if (activeTab === 'unread') {
+                params.isRead = false;
+            }
+            const data = await getNotifications(params);
+            
+            const newNotifications = data.notifications || [];
+            
+            if (isInitial || isRefresh) {
+                setNotifications(newNotifications);
+            } else {
+                setNotifications(prev => [...prev, ...newNotifications]);
+            }
+
+            setHasMore(newNotifications.length === 15);
+            setTotalCount(data.totalCount || 0);
+            setPage(prev => (isInitial || isRefresh) ? 2 : prev + 1);
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
-            Alert.alert('Error', 'Failed to load notifications. Please try again.');
+            if (isInitial || isRefresh) {
+                Alert.alert(t('error_title'), t('failed_to_load_notifications'));
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);
+            setLoadingMore(false);
         }
     };
 
     useEffect(() => {
-        fetchNotifications();
-    }, []);
+        fetchNotifications(true);
+    }, [activeTab]);
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        fetchNotifications(false, true);
+    };
+
+    const handleLoadMore = () => {
+        if (!loadingMore && hasMore && !loading && !refreshing) {
+            fetchNotifications();
+        }
+    };
 
     // Real-time notification listener
     useEffect(() => {
@@ -89,18 +134,18 @@ export default function NotificationsScreen() {
     };
 
     const handleMarkAllAsRead = async () => {
-        if (notifications.filter(n => !n.isRead).length === 0) {
-            Alert.alert('Info', 'All notifications are already read.');
+        if (globalUnreadCount === 0) {
+            Alert.alert(t('info'), t('all_notifications_read'));
             return;
         }
 
         Alert.alert(
-            'Mark All as Read',
-            'Are you sure you want to mark all notifications as read?',
+            t('mark_all_read'),
+            t('mark_all_read_confirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Mark All',
+                    text: t('mark_all'),
                     style: 'default',
                     onPress: async () => {
                         try {
@@ -108,7 +153,7 @@ export default function NotificationsScreen() {
                             setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
                         } catch (error) {
                             console.error('Failed to mark all as read:', error);
-                            Alert.alert('Error', 'Failed to mark all as read. Please try again.');
+                            Alert.alert(t('error_title'), t('failed_to_mark_all_read'));
                         }
                     },
                 },
@@ -118,12 +163,12 @@ export default function NotificationsScreen() {
 
     const handleDelete = async (notificationId) => {
         Alert.alert(
-            'Delete Notification',
-            'Are you sure you want to delete this notification?',
+            t('delete_notification'),
+            t('delete_notification_confirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Delete',
+                    text: t('delete'),
                     style: 'destructive',
                     onPress: async () => {
                         try {
@@ -131,7 +176,7 @@ export default function NotificationsScreen() {
                             setNotifications(prev => prev.filter(n => n._id !== notificationId));
                         } catch (error) {
                             console.error('Failed to delete notification:', error);
-                            Alert.alert('Error', 'Failed to delete notification. Please try again.');
+                            Alert.alert(t('error_title'), t('failed_to_delete_notification'));
                         }
                     },
                 },
@@ -141,18 +186,18 @@ export default function NotificationsScreen() {
 
     const handleClearAll = async () => {
         const readNotifications = notifications.filter(n => n.isRead);
-        if (readNotifications.length === 0) {
-            Alert.alert('Info', 'No read notifications to clear.');
+        if (readNotifications.length === 0 && (totalCount - globalUnreadCount) === 0) {
+            Alert.alert(t('info'), t('no_read_notifications'));
             return;
         }
 
         Alert.alert(
-            'Clear All Read',
-            `Are you sure you want to clear all ${readNotifications.length} read notifications?`,
+            t('clear_all_read'),
+            t('clear_all_read_confirm_count').replace('{count}', readNotifications.length),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Clear',
+                    text: t('clear'),
                     style: 'destructive',
                     onPress: async () => {
                         try {
@@ -160,7 +205,7 @@ export default function NotificationsScreen() {
                             setNotifications(prev => prev.filter(n => !n.isRead));
                         } catch (error) {
                             console.error('Failed to clear notifications:', error);
-                            Alert.alert('Error', 'Failed to clear notifications. Please try again.');
+                            Alert.alert(t('error_title'), t('failed_to_clear_notifications'));
                         }
                     },
                 },
@@ -172,16 +217,98 @@ export default function NotificationsScreen() {
         if (!url) return null;
 
         // Employer: Hired jobs detail mapping
-        // From: /dashboard/employer/hired-jobs/[id]
-        // To: /hired-job-details/[id]
         const hiredJobsMatch = url.match(/\/dashboard\/employer\/hired-jobs\/([a-f\d]+)/i);
-        if (hiredJobsMatch) {
-            return `/hired-job-details/${hiredJobsMatch[1]}`;
+        if (hiredJobsMatch) return `/hired-job-details/${hiredJobsMatch[1]}`;
+
+        // Employer: Job Applicants (both URL patterns the backend uses)
+        const applicantsMatch = url.match(/\/(?:dashboard\/employer\/)?job\/([a-f\d]+)\/applicants/i);
+        if (applicantsMatch) return `/job/${applicantsMatch[1]}/applicants`;
+
+        // Employer: Applicants list (no job id)
+        if (url.match(/\/dashboard\/employer\/applicants\/?$/i)) {
+            return '/(employer)/my-jobs';
         }
 
-        // Add other mappings as needed...
+        // Employer: My Jobs
+        if (url.match(/\/dashboard\/employer\/jobs\/?$/i)) {
+            return '/(employer)/my-jobs';
+        }
 
-        return url;
+        // Worker: Assigned Jobs with ID
+        const assignedJobMatch = url.match(/\/dashboard\/worker\/assigned-jobs\/([a-f\d]+)/i);
+        if (assignedJobMatch) return `/hired-job-details/${assignedJobMatch[1]}`;
+
+        // Worker: Hiring Requests
+        if (url.match(/\/dashboard\/worker\/hiring-requests\/?$/i)) {
+            return '/(worker)/my-work';
+        }
+
+        // Worker: Job Details
+        const jobMatch = url.match(/\/dashboard\/worker\/job\/([a-f\d]+)/i);
+        if (jobMatch) return `/job-details/${jobMatch[1]}`;
+
+        // Generic Job Details (e.g. /jobs/:id)
+        const genericJobMatch = url.match(/\/jobs\/([a-f\d]+)/i);
+        if (genericJobMatch) return `/job-details/${genericJobMatch[1]}`;
+
+        // Messages with conversationId query param
+        const conversationMatch = url.match(/\/messages\?conversationId=([a-f\d]+)/i);
+        if (conversationMatch) return `/chat/${conversationMatch[1]}`;
+
+        // Messages (generic)
+        if (url.match(/\/messages/i)) {
+            return user?.role === 'employer' ? '/(employer)/messages' : '/(worker)/messages';
+        }
+
+        // Profile
+        const profileMatch = url.match(/\/profile\/([a-f\d]+)/i);
+        if (profileMatch) return `/worker/${profileMatch[1]}`;
+
+        // Subscriptions & Plans
+        if (url.includes('/subscriptions') || url.includes('/subscription-plans')) {
+            return '/(employer)/subscription-plans';
+        }
+
+        // Billing & Invoices
+        if (url.includes('/billing') || url.includes('/invoices')) {
+            return '/(employer)/billing';
+        }
+
+        // Dashboard
+        if (url.match(/\/dashboard\/employer\/?$/i)) {
+            return '/(employer)/dashboard';
+        }
+        if (url.match(/\/dashboard\/worker\/?$/i)) {
+            return '/(worker)/dashboard';
+        }
+
+        console.warn('⚠️ Unhandled notification URL:', url);
+        return null;
+    };
+
+    // Helper: extract the actual Job ID from a notification.
+    // relatedId is NOT always a jobId — it may be Application._id or WorkLog._id.
+    // The real jobId lives in metadata.jobId or can be parsed from actionUrl.
+    const getJobIdFromNotification = (item) => {
+        // 1. Check metadata first (most reliable)
+        if (item.metadata?.jobId) return item.metadata.jobId;
+
+        // 2. If relatedModel is 'Job', relatedId IS the jobId
+        if (item.relatedModel === 'Job' && item.relatedId) return item.relatedId;
+
+        // 3. Extract from actionUrl patterns
+        if (item.actionUrl) {
+            const hiredMatch = item.actionUrl.match(/\/hired-jobs\/([a-f\d]+)/i);
+            if (hiredMatch) return hiredMatch[1];
+
+            const assignedMatch = item.actionUrl.match(/\/assigned-jobs\/([a-f\d]+)/i);
+            if (assignedMatch) return assignedMatch[1];
+
+            const jobMatch = item.actionUrl.match(/\/jobs?\/([a-f\d]+)/i);
+            if (jobMatch) return jobMatch[1];
+        }
+
+        return null;
     };
 
     const handleNotificationPress = async (item) => {
@@ -189,29 +316,181 @@ export default function NotificationsScreen() {
             await handleMarkAsRead(item._id);
         }
 
-        // Navigation logic
-        if (item.type === 'message' || item.type === 'new_message') {
-            if (item.relatedId) router.push(`/chat/${item.relatedId}`);
-            else if (item.actionUrl) router.push(item.actionUrl);
-        } else if (item.type === 'job_application') {
-            if (item.relatedId) router.push(`/job/${item.relatedId}/applicants`);
-        } else if (item.type === 'job_hired' || item.type === 'job_rejected') {
-            if (item.relatedId) router.push(`/job-details/${item.relatedId}`);
-        } else if (item.actionUrl) {
+        const notificationType = item.type;
+        const jobId = getJobIdFromNotification(item);
+
+        // ─── Messages ───
+        if (notificationType === 'new_message' || notificationType === 'new_conversation') {
+            if (item.actionUrl) {
+                const conversationMatch = item.actionUrl.match(/conversationId=([a-f\d]+)/i);
+                if (conversationMatch) {
+                    router.push(`/chat/${conversationMatch[1]}`);
+                    return;
+                }
+            }
+            if (item.relatedId) {
+                router.push(`/chat/${item.relatedId}`);
+                return;
+            }
+            router.push(user?.role === 'employer' ? '/(employer)/messages' : '/(worker)/messages');
+            return;
+        }
+
+        // ─── Job Applications (Employer receives) ───
+        // relatedId = Application._id (NOT jobId!) for new_application
+        // relatedId = jobId for job_application
+        if (notificationType === 'new_application' || notificationType === 'job_application') {
+            if (notificationType === 'job_application' && item.relatedId) {
+                // applicationController sets relatedId = jobId
+                router.push(`/job/${item.relatedId}/applicants`);
+                return;
+            }
+            // new_application: relatedId = application._id, need jobId from actionUrl
+            if (jobId) {
+                router.push(`/job/${jobId}/applicants`);
+                return;
+            }
+            // Fallback: go to my-jobs where employer can see all applicants
+            router.push('/(employer)/my-jobs');
+            return;
+        }
+
+        // ─── Application Rejected/Approved (Worker receives) ───
+        // relatedId = Application._id, actionUrl has /jobs/:jobId
+        if (notificationType === 'application_rejected' || notificationType === 'application_approved') {
+            if (jobId) {
+                router.push(`/job-details/${jobId}`);
+                return;
+            }
+            router.push('/(worker)/my-work');
+            return;
+        }
+
+        // ─── Hiring Requests (Worker receives) ───
+        // relatedId = Application._id
+        if (notificationType === 'hire_request_received') {
+            router.push('/(worker)/my-work');
+            return;
+        }
+
+        // ─── Hire Request Accepted (Employer receives) ───
+        // relatedId = Job._id ✓
+        if (notificationType === 'hire_request_accepted') {
+            if (item.relatedId) {
+                router.push(`/hired-job-details/${item.relatedId}`);
+                return;
+            }
+            router.push('/(employer)/hired-jobs');
+            return;
+        }
+
+        // ─── Worker Hired (Worker receives) ───
+        // relatedId = Job._id ✓
+        if (notificationType === 'worker_hired') {
+            if (item.relatedId) {
+                router.push(`/hired-job-details/${item.relatedId}`);
+                return;
+            }
+            router.push('/(worker)/my-work');
+            return;
+        }
+
+        // ─── Hire Request Rejected (Employer receives) ───
+        if (notificationType === 'hire_request_rejected') {
+            router.push('/(employer)/my-jobs');
+            return;
+        }
+
+        // ─── Work Progress (Employer receives) ───
+        // relatedId = WorkLog._id (NOT jobId!), jobId is in metadata.jobId
+        if (notificationType === 'work_started' || notificationType === 'work_ended' || notificationType === 'work_log_updated') {
+            if (jobId) {
+                router.push({ pathname: `/hired-job-details/${jobId}`, params: { workerId: item.metadata?.workerId } });
+                return;
+            }
+            router.push('/(employer)/hired-jobs');
+            return;
+        }
+
+        // ─── OTP Generated (Employer receives) ───
+        // relatedId = WorkLog._id (NOT jobId!), jobId is in metadata.jobId
+        if (notificationType === 'otp_generated') {
+            if (jobId) {
+                router.push({ pathname: `/hired-job-details/${jobId}`, params: { workerId: item.metadata?.workerId } });
+                return;
+            }
+            router.push(user?.role === 'employer' ? '/(employer)/hired-jobs' : '/(worker)/my-work');
+            return;
+        }
+
+        // ─── Ratings ───
+        if (notificationType === 'rating_received' || notificationType === 'new_rating' || notificationType === 'rating_prompt') {
+            if (user?.role === 'worker') {
+                router.push('/(worker)/profile');
+            } else {
+                if (jobId) {
+                    router.push({ pathname: `/hired-job-details/${jobId}`, params: { workerId: item.metadata?.workerId } });
+                } else {
+                    router.push('/(employer)/hired-jobs');
+                }
+            }
+            return;
+        }
+
+        // ─── Job Management (Admin → Employer) ───
+        if (notificationType === 'job_approved' || notificationType === 'job_rejected' || notificationType === 'job_posted' || notificationType === 'job_completed') {
+            if (user?.role === 'employer') {
+                router.push('/(employer)/my-jobs');
+            } else if (jobId) {
+                router.push(`/job-details/${jobId}`);
+            }
+            return;
+        }
+
+        // ─── Profile Approval ───
+        if (notificationType === 'profile_approved' || notificationType === 'profile_rejected') {
+            router.push(user?.role === 'employer' ? '/(employer)/profile' : '/(worker)/profile');
+            return;
+        }
+
+        // ─── Availability Changed ───
+        if (notificationType === 'availability_changed') {
+            router.push('/(worker)/profile');
+            return;
+        }
+
+        // ─── Documents ───
+        if (notificationType === 'document_verified' || notificationType === 'document_rejected' || notificationType === 'document_expiring') {
+            router.push(user?.role === 'employer' ? '/(employer)/profile' : '/(worker)/profile');
+            return;
+        }
+
+        // ─── Subscriptions & Payments ───
+        if (notificationType && (notificationType.startsWith('subscription_') || notificationType === 'subscription_created')) {
+            router.push('/(employer)/subscription-plans');
+            return;
+        }
+        if (notificationType && (notificationType.startsWith('payment_') || notificationType.includes('invoice'))) {
+            router.push('/(employer)/billing');
+            return;
+        }
+
+        // ─── Fallback: Use actionUrl mapping ───
+        if (item.actionUrl) {
             const mobileRoute = mapWebUrlToMobileRoute(item.actionUrl);
             if (mobileRoute) {
-                // Pass workerId if available in metadata
                 const params = {};
-                if (item.metadata && item.metadata.workerId) {
+                if (item.metadata?.workerId) {
                     params.workerId = item.metadata.workerId;
                 }
-
-                router.push({
-                    pathname: mobileRoute,
-                    params
-                });
+                router.push({ pathname: mobileRoute, params });
+                return;
             }
         }
+
+        // ─── Last resort: go to dashboard ───
+        console.warn('⚠️ Unhandled notification type:', notificationType, 'URL:', item.actionUrl);
+        router.push(user?.role === 'employer' ? '/(employer)/dashboard' : '/(worker)/dashboard');
     };
 
     const getNotificationColor = (type) => {
@@ -301,13 +580,11 @@ export default function NotificationsScreen() {
         );
     };
 
-    const unreadCount = notifications.filter(n => !n.isRead).length;
-    const filteredNotifications = activeTab === 'all'
-        ? notifications
-        : notifications.filter(n => !n.isRead);
+    const loadedUnreadCount = notifications.filter(n => !n.isRead).length;
+    const filteredNotifications = notifications;
 
     if (loading) {
-        return <LoadingSpinner fullScreen message="Loading notifications..." />;
+        return <LoadingSpinner fullScreen message={t('loading_notifications')} />;
     }
 
     return (
@@ -315,7 +592,7 @@ export default function NotificationsScreen() {
             <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
             <Stack.Screen
                 options={{
-                    title: 'Notifications',
+                    title: t('nav_messages'),
                     headerStyle: {
                         backgroundColor: COLORS.primary,
                         elevation: 0,
@@ -328,7 +605,7 @@ export default function NotificationsScreen() {
                     },
                     headerRight: () => (
                         <View style={styles.headerButtons}>
-                            {unreadCount > 0 && (
+                            {globalUnreadCount > 0 && (
                                 <TouchableOpacity
                                     onPress={handleMarkAllAsRead}
                                     style={styles.headerButton}
@@ -357,7 +634,7 @@ export default function NotificationsScreen() {
                         activeOpacity={0.7}
                     >
                         <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-                            All
+                            {t('filter_all')}
                         </Text>
                         {activeTab === 'all' && <View style={styles.tabIndicator} />}
                     </TouchableOpacity>
@@ -369,11 +646,11 @@ export default function NotificationsScreen() {
                     >
                         <View style={styles.tabBadgeContainer}>
                             <Text style={[styles.tabText, activeTab === 'unread' && styles.activeTabText]}>
-                                Unread
+                                {t('unread')}
                             </Text>
-                            {unreadCount > 0 && (
+                            {globalUnreadCount > 0 && (
                                 <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>{unreadCount}</Text>
+                                    <Text style={styles.badgeText}>{globalUnreadCount}</Text>
                                 </View>
                             )}
                         </View>
@@ -392,13 +669,19 @@ export default function NotificationsScreen() {
                     refreshControl={
                         <RefreshControl
                             refreshing={refreshing}
-                            onRefresh={() => {
-                                setRefreshing(true);
-                                fetchNotifications();
-                            }}
+                            onRefresh={handleRefresh}
                             tintColor={COLORS.primary}
                             colors={[COLORS.primary]}
                         />
+                    }
+                    onEndReached={handleLoadMore}
+                    onEndReachedThreshold={0.3}
+                    ListFooterComponent={
+                        loadingMore ? (
+                            <View style={styles.loadMoreContainer}>
+                                <LoadingSpinner size="small" />
+                            </View>
+                        ) : null
                     }
                     showsVerticalScrollIndicator={false}
                     onScroll={Animated.event(
@@ -415,23 +698,20 @@ export default function NotificationsScreen() {
                                 />
                             </View>
                             <Text style={styles.emptyTitle}>
-                                {activeTab === 'all' ? 'No Notifications Yet' : 'No Unread Notifications'}
+                                {activeTab === 'all' ? t('no_notifications_yet') : t('no_unread_notifications')}
                             </Text>
                             <Text style={styles.emptySubtitle}>
                                 {activeTab === 'all'
-                                    ? "You're all caught up! Check back later for updates."
-                                    : "All notifications are read. Great job staying on top of things!"}
+                                    ? t('all_caught_up')
+                                    : t('all_notifications_read_msg')}
                             </Text>
                             {notifications.length === 0 && (
                                 <TouchableOpacity
                                     style={styles.refreshButton}
-                                    onPress={() => {
-                                        setRefreshing(true);
-                                        fetchNotifications();
-                                    }}
+                                    onPress={handleRefresh}
                                 >
                                     <Ionicons name="refresh" size={18} color={COLORS.primary} />
-                                    <Text style={styles.refreshText}>Refresh</Text>
+                                    <Text style={styles.refreshText}>{t('refresh')}</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -441,8 +721,8 @@ export default function NotificationsScreen() {
                             <View style={styles.listHeader}>
                                 <Text style={styles.listHeaderText}>
                                     {activeTab === 'all'
-                                        ? `All Notifications (${notifications.length})`
-                                        : `Unread Notifications (${unreadCount})`
+                                        ? `${t('filter_all')} (${totalCount})`
+                                        : `${t('unread')} (${globalUnreadCount})`
                                     }
                                 </Text>
                             </View>
@@ -698,5 +978,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: COLORS.primary,
         marginLeft: 6,
+    },
+    loadMoreContainer: {
+        paddingVertical: 20,
+        alignItems: 'center',
     },
 });

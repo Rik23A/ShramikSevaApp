@@ -1,17 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text, Animated, Easing, Dimensions } from 'react-native';
+import { View, StyleSheet, Text, Animated, Easing, Dimensions, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 
 const { width } = Dimensions.get('window');
 
-const STEPS = [
-    { icon: 'search', label: 'Find Jobs', color: COLORS.primaryLight },
-    { icon: 'document-text', label: 'Apply', color: COLORS.primary },
-    { icon: 'checkmark-circle', label: 'Get Hired', color: COLORS.success },
+const getSteps = (t) => [
+    { icon: 'search', label: t('find_jobs'), color: COLORS.primaryLight },
+    { icon: 'document-text', label: t('apply'), color: COLORS.primary },
+    { icon: 'checkmark-circle', label: t('get_hired'), color: COLORS.success },
 ];
 
-const LoadingSpinner = ({ message = 'Loading...', fullScreen = false }) => {
+const LoadingSpinner = ({ message, fullScreen = false }) => {
+    const { t } = useLanguage();
+    const STEPS = getSteps(t);
+    const displayMessage = message || t('loading');
     // ── Animated values ──
     const logoScale = useRef(new Animated.Value(0)).current;
     const logoRotate = useRef(new Animated.Value(0)).current;
@@ -147,10 +151,10 @@ const LoadingSpinner = ({ message = 'Loading...', fullScreen = false }) => {
                             { transform: [{ rotate: spin }] },
                         ]}
                     />
-                    <Ionicons name="briefcase" size={20} color={COLORS.primary} style={styles.inlineIcon} />
+                    <Image source={require('../../assets/images/icon.png')} style={styles.inlineIcon} resizeMode="contain" />
                 </View>
-                {message && (
-                    <Text style={styles.inlineMessage}>{message}</Text>
+                {displayMessage && (
+                    <Text style={styles.inlineMessage}>{displayMessage}</Text>
                 )}
             </View>
         );
@@ -198,7 +202,7 @@ const LoadingSpinner = ({ message = 'Loading...', fullScreen = false }) => {
 
                 {/* Inner icon */}
                 <View style={styles.logoInner}>
-                    <Ionicons name="briefcase" size={36} color={COLORS.white} />
+                    <Image source={require('../../assets/images/icon.png')} style={{ width: 64, height: 64 }} resizeMode="contain" />
                 </View>
             </Animated.View>
 
@@ -279,7 +283,7 @@ const LoadingSpinner = ({ message = 'Loading...', fullScreen = false }) => {
             <Animated.View
                 style={[styles.messageContainer, { opacity: messageOpacity }]}
             >
-                <Text style={styles.message}>{message}</Text>
+                <Text style={styles.message}>{displayMessage}</Text>
                 <LoadingDots />
             </Animated.View>
         </View>
@@ -368,6 +372,9 @@ const styles = StyleSheet.create({
     },
     inlineIcon: {
         position: 'absolute',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
     },
     inlineMessage: {
         marginTop: 12,
@@ -426,15 +433,8 @@ const styles = StyleSheet.create({
     logoInner: {
         width: 72,
         height: 72,
-        borderRadius: 36,
-        backgroundColor: COLORS.primary,
         justifyContent: 'center',
         alignItems: 'center',
-        elevation: 8,
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
-        shadowRadius: 10,
     },
 
     /* App Name */

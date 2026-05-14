@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
@@ -13,32 +13,45 @@ import { registerForPushNotificationsAsync } from '../services/pushNotificationS
 
 function RootLayoutNav() {
     const { isAuthenticated, isLoading, user } = useAuth();
+    const hasNavigated = useRef(false);
 
     useEffect(() => {
-        if (!isLoading && isAuthenticated && user) {
-            registerForPushNotificationsAsync();
-
-            // Navigate based on user role
-            if (user.role === 'worker') {
-                router.replace('/(worker)/dashboard');
-            } else if (user.role === 'employer') {
-                router.replace('/(employer)/dashboard');
+        if (!isLoading) {
+            if (isAuthenticated && user && !hasNavigated.current) {
+                hasNavigated.current = true;
+                
+                // Navigate based on user role
+                if (user.role === 'worker') {
+                    router.replace('/(worker)/dashboard');
+                } else if (user.role === 'employer') {
+                    router.replace('/(employer)/dashboard');
+                }
+            } else if (!isAuthenticated) {
+                hasNavigated.current = false;
             }
         }
     }, [isAuthenticated, isLoading, user]);
 
     useEffect(() => {
-        // Handle notification tap
-        const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+        // Handle notification tap (background/quit state)
+        const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
             const data = response.notification.request.content.data;
             if (data && data.actionUrl) {
-                // Navigate to the action URL
-                // e.g., /job/[id]/applicants
                 router.push(data.actionUrl);
             }
         });
 
-        return () => subscription.remove();
+        // Handle notification received (foreground state)
+        const notificationSubscription = Notifications.addNotificationReceivedListener(notification => {
+            console.log('🔔 Foreground notification received:', notification);
+            // You can add logic here to trigger local state updates if needed,
+            // though the application already uses Socket.io for real-time chat/notifications.
+        });
+
+        return () => {
+            responseSubscription.remove();
+            notificationSubscription.remove();
+        };
     }, []);
 
     if (isLoading) {

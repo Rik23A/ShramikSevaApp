@@ -25,8 +25,12 @@ export const getMessages = async (conversationId) => {
 };
 
 // Send a message
-export const sendMessage = async (conversationId, sender, text) => {
-    const response = await API.post('/messages', { conversationId, sender, text });
+export const sendMessage = async (conversationId, sender, text, clientMessageId = null) => {
+    const payload = { conversationId, sender, text };
+    if (clientMessageId) {
+        payload.clientMessageId = clientMessageId;
+    }
+    const response = await API.post('/messages', payload);
     return response.data;
 };
 
@@ -34,4 +38,16 @@ export const sendMessage = async (conversationId, sender, text) => {
 export const markMessagesAsRead = async (conversationId) => {
     const response = await API.put(`/messages/${conversationId}/read`);
     return response.data;
+};
+
+// Translate text
+export const translateText = async (text, targetLang, sourceLang = 'en') => {
+    if (!text || !targetLang || targetLang === 'en') return text;
+    try {
+        const response = await API.post('/translate', { text, targetLang, sourceLang });
+        return response.data?.translation || text;
+    } catch (error) {
+        console.error('Translation error:', error);
+        return text;
+    }
 };

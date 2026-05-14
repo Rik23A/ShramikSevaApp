@@ -22,7 +22,7 @@ const ApplicationStatusModal = ({ isOpen, onClose, application }) => {
     const steps = [
         {
             id: 'initiation',
-            label: isHireRequest ? 'Offer Received' : 'Applied',
+            label: isHireRequest ? t('offer_received') : t('applied'),
             date: new Date(appliedDate).toLocaleDateString(),
             icon: isHireRequest ? 'briefcase' : 'document-text',
             active: true,
@@ -31,8 +31,8 @@ const ApplicationStatusModal = ({ isOpen, onClose, application }) => {
         },
         {
             id: 'review',
-            label: isHireRequest ? 'You Accepted' : 'In Review',
-            date: isHireRequest ? (status === 'offerAccepted' ? 'Offer Accepted' : 'Pending Action') : (status !== 'pending' ? 'Viewed by Employer' : 'Pending'),
+            label: isHireRequest ? t('you_accepted') : t('in_review'),
+            date: isHireRequest ? (status === 'offerAccepted' ? t('offerAccepted') : t('pending_action')) : (status !== 'pending' ? t('viewed_by_employer') : t('pending')),
             icon: isHireRequest ? 'checkmark-circle' : 'time',
             active: isHireRequest ? status === 'offerAccepted' : status !== 'pending',
             completed: isHireRequest ? status === 'offerAccepted' : status !== 'pending',
@@ -40,12 +40,12 @@ const ApplicationStatusModal = ({ isOpen, onClose, application }) => {
         },
         {
             id: 'decision',
-            label: status === 'hired' || status === 'offerAccepted' ? 'Hired' :
-                status === 'offered' ? 'Response Needed' :
-                    status === 'rejected' || status === 'offerRejected' ? 'Not Selected' : 'Decision',
-            date: status === 'pending' || status === 'offered' ? 'In Progress' :
-                (status === 'approved' ? 'Shortlisted' :
-                    status === 'hired' || status === 'offerAccepted' ? 'Congratulations!' : 'Closed'),
+            label: status === 'hired' || status === 'offerAccepted' ? t('hired') :
+                status === 'offered' ? t('response_needed') :
+                    status === 'rejected' || status === 'offerRejected' ? t('not_selected') : t('decision'),
+            date: status === 'pending' || status === 'offered' ? t('status_in_progress') :
+                (status === 'approved' ? t('shortlisted') :
+                    status === 'hired' || status === 'offerAccepted' ? t('congratulations') : t('closed')),
             icon: status === 'hired' || status === 'offerAccepted' ? 'checkmark-circle' :
                 status === 'rejected' || status === 'offerRejected' ? 'close-circle' :
                     status === 'offered' ? 'briefcase' : 'ellipse-outline',
@@ -128,7 +128,7 @@ const ApplicationStatusModal = ({ isOpen, onClose, application }) => {
                             onPress={handleMessage}
                         >
                             <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primary} />
-                            <Text style={styles.actionButtonTextOutline}>Chat</Text>
+                            <Text style={styles.actionButtonTextOutline}>{t('chat')}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -137,7 +137,7 @@ const ApplicationStatusModal = ({ isOpen, onClose, application }) => {
                         >
                             <Ionicons name={status === 'offered' ? 'briefcase-outline' : 'document-text-outline'} size={18} color={COLORS.white} />
                             <Text style={styles.actionButtonTextPrimary}>
-                                {status === 'offered' ? 'View Offer' : 'View Job'}
+                                {status === 'offered' ? t('view_offer') : t('view_job')}
                             </Text>
                         </TouchableOpacity>
                     </View>

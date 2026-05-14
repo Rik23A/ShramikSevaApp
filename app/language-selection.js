@@ -3,13 +3,14 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
     FlatList,
     Dimensions,
     Animated,
     Easing,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/config';
@@ -37,7 +38,7 @@ const LANGUAGES = [
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 export default function LanguageSelectionScreen() {
-    const { changeLanguage, locale } = useLanguage();
+    const { changeLanguage, locale, t } = useLanguage();
     const [selectedLang, setSelectedLang] = useState(locale || 'en');
 
     // Animations
@@ -69,8 +70,9 @@ export default function LanguageSelectionScreen() {
         ]).start();
     }, []);
 
-    const handleLanguageSelect = (langCode) => {
+    const handleLanguageSelect = async (langCode) => {
         setSelectedLang(langCode);
+        await changeLanguage(langCode);
     };
 
     const handleContinue = async () => {
@@ -83,6 +85,7 @@ export default function LanguageSelectionScreen() {
             colors={[COLORS.background, '#E3F2FD', '#E1F5FE']}
             style={styles.container}
         >
+            <StatusBar style="dark" />
             <SafeAreaView style={{ flex: 1 }}>
                 <Animated.View style={[
                     styles.header,
@@ -91,8 +94,8 @@ export default function LanguageSelectionScreen() {
                     <View style={styles.iconContainer}>
                         <Ionicons name="language" size={36} color={COLORS.primary} />
                     </View>
-                    <Text style={styles.title}>Welcome / नमस्ते</Text>
-                    <Text style={styles.subtitle}>Select your language to continue</Text>
+                    <Text style={styles.title}>{t('welcome')} / नमस्ते</Text>
+                    <Text style={styles.subtitle}>{t('welcome_subtitle')}</Text>
                 </Animated.View>
 
                 <FlatList
@@ -128,7 +131,7 @@ export default function LanguageSelectionScreen() {
                             end={{ x: 1, y: 0 }}
                             style={styles.continueButton}
                         >
-                            <Text style={styles.continueButtonText}>Continue</Text>
+                            <Text style={styles.continueButtonText}>{t('continue_btn')}</Text>
                             <Ionicons name="arrow-forward" size={20} color={COLORS.white} />
                         </LinearGradient>
                     </TouchableOpacity>

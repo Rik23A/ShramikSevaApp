@@ -9,7 +9,8 @@ import {
     Alert,
     TouchableOpacity,
 } from 'react-native';
-import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -18,12 +19,37 @@ import LocationPicker from '../../components/LocationPicker';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import AnimatedModal from '../../components/ui/AnimatedModal';
 import SelectionModal from '../../components/ui/SelectionModal';
+import { useLanguage } from '../../context/LanguageContext';
 import { COLORS, WORKER_TYPES, WORK_TYPES, WORKER_SKILLS } from '../../constants/config';
-import { createJob } from '../../services/jobService';
+import { createJob, getJobById, updateJob } from '../../services/jobService';
 import { canPostJob, getSubscriptionPlans } from '../../services/subscriptionService';
 
+const INITIAL_FORM_DATA = {
+    status: 'open',
+    title: '',
+    description: '',
+    skills: '',
+    workerType: [],
+    salary: '',
+    location: '',
+    city: '',
+    state: '',
+    coordinates: null,
+    workType: 'temporary',
+    durationDays: '',
+    totalOpenings: '1',
+    minExperience: '',
+    maxExperience: '',
+    otpVerificationRequired: false,
+    geoTaggingRequired: false,
+};
+
 export default function PostJobScreen() {
+    const { jobId } = useLocalSearchParams();
+    const { t } = useLanguage();
+    const isEditing = !!jobId;
     const [loading, setLoading] = useState(false);
+    const [fetchingJob, setFetchingJob] = useState(isEditing);
     const [checkingSubscription, setCheckingSubscription] = useState(true);
     const [subscriptionInfo, setSubscriptionInfo] = useState(null);
     const [availablePlans, setAvailablePlans] = useState([]);
@@ -35,22 +61,7 @@ export default function PostJobScreen() {
         primaryButtonText: '',
         tabToOpen: 'plans',
     });
-    const [formData, setFormData] = useState({
-        title: '',
-        description: '',
-        skills: '',
-        workerType: [],
-        salary: '',
-        location: '',
-        coordinates: null,
-        workType: 'temporary',
-        durationDays: '',
-        totalOpenings: '1',
-        minExperience: '',
-        maxExperience: '',
-        otpVerificationRequired: false,
-        geoTaggingRequired: false,
-    });
+    const [formData, setFormData] = useState(INITIAL_FORM_DATA);
     const [errors, setErrors] = useState({});
     const [showWorkerModal, setShowWorkerModal] = useState(false);
     const [showSkillsModal, setShowSkillsModal] = useState(false);
@@ -59,7 +70,51 @@ export default function PostJobScreen() {
     useEffect(() => {
         checkSubscription();
         fetchPlans();
-    }, []);
+        if (isEditing) {
+            fetchJobDetails();
+        } else {
+            // Reset form when not editing (fixes state leak from previous edits)
+            setFormData(INITIAL_FORM_DATA);
+            setErrors({});
+        }
+    }, [jobId]);
+
+    const fetchJobDetails = async () => {
+        try {
+            setFetchingJob(true);
+            const job = await getJobById(jobId);
+            if (job) {
+                setFormData({
+                    title: job.title || '',
+                    description: job.description || '',
+                    skills: job.skills ? job.skills.join(', ') : '',
+                    workerType: job.workerType || [],
+                    salary: job.salary ? String(job.salary) : '',
+                    location: job.location?.address || '',
+                    city: job.location?.city || '',
+                    state: job.location?.state || '',
+                    coordinates: job.location?.coordinates ? {
+                        latitude: job.location.coordinates[1],
+                        longitude: job.location.coordinates[0]
+                    } : null,
+                    workType: job.workType || 'temporary',
+                    durationDays: job.durationDays ? String(job.durationDays) : '',
+                    totalOpenings: job.totalOpenings ? String(job.totalOpenings) : '1',
+                    minExperience: job.minExperience ? String(job.minExperience) : '',
+                    maxExperience: job.maxExperience ? String(job.maxExperience) : '',
+                    status: job.status || 'open',
+                    otpVerificationRequired: job.otpVerificationRequired || false,
+                    geoTaggingRequired: job.geoTaggingRequired || false,
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching job details:', error);
+            Alert.alert(t('error'), t('failed_to_load_job_details'));
+            router.back();
+        } finally {
+            setFetchingJob(false);
+        }
+    };
 
     const fetchPlans = async () => {
         try {
@@ -76,25 +131,25 @@ export default function PostJobScreen() {
             const result = await canPostJob();
             setSubscriptionInfo(result);
 
-            if (!result.canPostJob) {
+            if (!result.canPostJob && !isEditing) {
                 const isNoSubscription = result.reason === 'no_subscription';
                 const isExpired = result.reason === 'expired';
                 const isLimitReached = result.reason === 'limit_reached';
 
                 let modalType = 'subscription';
-                let title = 'Subscription Required';
-                let buttonText = 'View Plans';
+                let title = t('subscription_required');
+                let buttonText = t('view_plans');
                 let tabToOpen = 'plans';
 
                 if (isExpired) {
                     modalType = 'expired';
-                    title = 'Subscription Expired';
-                    buttonText = 'Renew Now';
+                    title = t('subscription_expired');
+                    buttonText = t('renew_now');
                     tabToOpen = 'myplan';
                 } else if (isLimitReached) {
                     modalType = 'limit';
-                    title = 'Job Limit Reached';
-                    buttonText = 'Upgrade Plan';
+                    title = t('job_limit_reached');
+                    buttonText = t('upgrade_plan');
                     tabToOpen = 'plans';
                 }
 
@@ -131,14 +186,14 @@ export default function PostJobScreen() {
 
     const validate = () => {
         const newErrors = {};
-        if (!formData.title.trim()) newErrors.title = 'Job title is required';
-        if (!formData.description.trim()) newErrors.description = 'Description is required';
-        if (!formData.salary || isNaN(formData.salary)) newErrors.salary = 'Valid salary is required';
-        if (!formData.location.trim()) newErrors.location = 'Location is required';
+        if (!formData.title.trim()) newErrors.title = t('validation_title_req');
+        if (!formData.description.trim()) newErrors.description = t('validation_desc_req');
+        if (!formData.salary || isNaN(formData.salary)) newErrors.salary = t('validation_salary_req');
+        if (!formData.location.trim()) newErrors.location = t('validation_loc_req');
         if (formData.workType === 'temporary' && !formData.durationDays) {
-            newErrors.durationDays = 'Duration is required for temporary jobs';
+            newErrors.durationDays = t('validation_duration_req');
         }
-        if (formData.workerType.length === 0) newErrors.workerType = 'Select a worker type';
+        if (formData.workerType.length === 0) newErrors.workerType = t('validation_worker_type_req');
 
         if (formData.minExperience && isNaN(formData.minExperience)) newErrors.minExperience = 'Must be a number';
         if (formData.maxExperience && isNaN(formData.maxExperience)) newErrors.maxExperience = 'Must be a number';
@@ -163,17 +218,16 @@ export default function PostJobScreen() {
                 salary: Number(formData.salary),
                 location: {
                     address: formData.location,
-                    ...(formData.coordinates && {
-                        coordinates: {
-                            lat: formData.coordinates.latitude,
-                            lng: formData.coordinates.longitude
-                        }
-                    })
+                    city: formData.city || '',
+                    state: formData.state || '',
+                    latitude: formData.coordinates?.latitude,
+                    longitude: formData.coordinates?.longitude
                 },
                 workType: formData.workType,
                 totalOpenings: Number(formData.totalOpenings) || 1,
                 minExperience: formData.minExperience ? Number(formData.minExperience) : undefined,
                 maxExperience: formData.maxExperience ? Number(formData.maxExperience) : undefined,
+                status: formData.status,
                 otpVerificationRequired: formData.otpVerificationRequired,
                 geoTaggingRequired: formData.geoTaggingRequired,
             };
@@ -182,12 +236,19 @@ export default function PostJobScreen() {
                 jobData.durationDays = Number(formData.durationDays);
             }
 
-            await createJob(jobData);
-            Alert.alert('Success', 'Job posted successfully!', [
-                { text: 'OK', onPress: () => router.push('/(employer)/my-jobs') }
-            ]);
+            if (isEditing) {
+                await updateJob(jobId, jobData);
+                Alert.alert(t('success'), t('job_updated_success'), [
+                    { text: t('ok'), onPress: () => router.push('/(employer)/my-jobs') }
+                ]);
+            } else {
+                await createJob(jobData);
+                Alert.alert(t('success'), t('job_posted_success'), [
+                    { text: t('ok'), onPress: () => router.push('/(employer)/my-jobs') }
+                ]);
+            }
         } catch (error) {
-            Alert.alert('Error', error.response?.data?.message || 'Failed to post job');
+            Alert.alert('Error', error.response?.data?.message || `Failed to ${isEditing ? 'update' : 'post'} job`);
         } finally {
             setLoading(false);
         }
@@ -217,334 +278,351 @@ export default function PostJobScreen() {
     };
 
     // Show loading while checking subscription
-    if (checkingSubscription) {
-        return <LoadingSpinner fullScreen message="Checking subscription..." />;
+    if (checkingSubscription || fetchingJob) {
+        return <LoadingSpinner fullScreen message={fetchingJob ? t('loading') : t('loading')} />;
     }
-
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-        >
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
+        <SafeAreaView style={styles.container}>
+            <Stack.Screen options={{ title: isEditing ? t('edit_job_location') : t('post_new_job') }} />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
             >
-                {/* Upgrade Plan Card - When no subscription or limit reached */}
-                {subscriptionInfo && !subscriptionInfo.canPostJob && (
-                    <View style={styles.upgradePlanCard}>
-                        <View style={styles.upgradeHeader}>
-                            <View style={styles.upgradeIconContainer}>
-                                <Ionicons
-                                    name={subscriptionInfo.reason === 'expired' ? 'time' : subscriptionInfo.reason === 'limit_reached' ? 'trending-up' : 'card'}
-                                    size={32}
-                                    color={COLORS.white}
-                                />
-                            </View>
-                            <View style={styles.upgradeHeaderText}>
-                                <Text style={styles.upgradeTitle}>
-                                    {subscriptionInfo.reason === 'expired'
-                                        ? 'Subscription Expired'
-                                        : subscriptionInfo.reason === 'limit_reached'
-                                            ? 'Job Limit Reached'
-                                            : 'No Active Subscription'}
-                                </Text>
-                                <Text style={styles.upgradeSubtitle}>
-                                    {subscriptionInfo.message}
-                                </Text>
-                            </View>
-                        </View>
-
-                        {/* Current Status Details if available */}
-                        {subscriptionInfo.subscription && (
-                            <View style={styles.currentStatusContainer}>
-                                <View style={styles.statusRow}>
-                                    <Text style={styles.statusLabel}>Current Plan:</Text>
-                                    <Text style={styles.statusValue}>{subscriptionInfo.subscription.name}</Text>
-                                </View>
-                                {subscriptionInfo.reason === 'limit_reached' && (
-                                    <View style={styles.statusRow}>
-                                        <Text style={styles.statusLabel}>Active Jobs:</Text>
-                                        <Text style={styles.statusValue}>{subscriptionInfo.subscription.activeJobsCount} / {subscriptionInfo.subscription.maxActiveJobs}</Text>
-                                    </View>
-                                )}
-                                <View style={styles.statusRow}>
-                                    <Text style={styles.statusLabel}>Remaining Time:</Text>
-                                    <Text style={styles.statusValue}>{subscriptionInfo.subscription.daysRemaining} days</Text>
-                                </View>
-
-                                <View style={styles.progressBarWrapper}>
-                                    <View
-                                        style={[
-                                            styles.progressBar,
-                                            { width: `${(subscriptionInfo.subscription.activeJobsCount / subscriptionInfo.subscription.maxActiveJobs) * 100}%` }
-                                        ]}
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* Upgrade Plan Card - When no subscription or limit reached (Hidden in edit mode) */}
+                    {subscriptionInfo && !subscriptionInfo.canPostJob && !isEditing && (
+                        <View style={styles.upgradePlanCard}>
+                            <View style={styles.upgradeHeader}>
+                                <View style={styles.upgradeIconContainer}>
+                                    <Ionicons
+                                        name={subscriptionInfo.reason === 'expired' ? 'time' : subscriptionInfo.reason === 'limit_reached' ? 'trending-up' : 'card'}
+                                        size={32}
+                                        color={COLORS.white}
                                     />
                                 </View>
+                                <View style={styles.upgradeHeaderText}>
+                                    <Text style={styles.upgradeTitle}>
+                                        {subscriptionInfo.reason === 'expired'
+                                            ? t('subscription_expired')
+                                            : subscriptionInfo.reason === 'limit_reached'
+                                                ? t('job_limit_reached')
+                                                : t('subscription_required')}
+                                    </Text>
+                                    <Text style={styles.upgradeSubtitle}>
+                                        {subscriptionInfo.message}
+                                    </Text>
+                                </View>
                             </View>
-                        )}
 
-                        {/* Dynamic Quick Plan Options */}
-                        <View style={styles.quickPlansContainer}>
-                            {availablePlans.slice(0, 3).map((plan, index) => (
-                                <TouchableOpacity
-                                    key={plan.planKey || index}
-                                    style={[
-                                        styles.quickPlanCard,
-                                        plan.planKey === 'pro' && styles.quickPlanCardPopular // Mark 90 days plan as popular
-                                    ]}
-                                    onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
-                                >
-                                    {plan.planKey === 'pro' && (
-                                        <View style={styles.popularTag}>
-                                            <Text style={styles.popularTagText}>BEST VALUE</Text>
+                            {/* Current Status Details if available */}
+                            {subscriptionInfo.subscription && (
+                                <View style={styles.currentStatusContainer}>
+                                    <View style={styles.statusRow}>
+                                        <Text style={styles.statusLabel}>{t('current_plan')}</Text>
+                                        <Text style={styles.statusValue}>{subscriptionInfo.subscription.name}</Text>
+                                    </View>
+                                    {subscriptionInfo.reason === 'limit_reached' && (
+                                        <View style={styles.statusRow}>
+                                            <Text style={styles.statusLabel}>{t('active_jobs_count')}</Text>
+                                            <Text style={styles.statusValue}>{subscriptionInfo.subscription.activeJobsCount} / {subscriptionInfo.subscription.maxActiveJobs}</Text>
                                         </View>
                                     )}
-                                    <Ionicons
-                                        name={index === 0 ? 'flash' : index === 1 ? 'star' : 'rocket'}
-                                        size={24}
-                                        color={plan.planKey === 'pro' ? COLORS.white : COLORS.secondary}
-                                    />
-                                    <Text style={[styles.quickPlanName, plan.planKey === 'pro' && styles.quickPlanNameWhite]}>
-                                        {plan.name.replace(' Plan', '')}
-                                    </Text>
-                                    <Text style={[styles.quickPlanPrice, plan.planKey === 'pro' && styles.quickPlanPriceWhite]}>
-                                        ₹{plan.price}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                                    <View style={styles.statusRow}>
+                                        <Text style={styles.statusLabel}>{t('remaining_time')}</Text>
+                                        <Text style={styles.statusValue}>{subscriptionInfo.subscription.daysRemaining} {t('days')}</Text>
+                                    </View>
+
+                                    <View style={styles.progressBarWrapper}>
+                                        <View
+                                            style={[
+                                                styles.progressBar,
+                                                { width: `${(subscriptionInfo.subscription.activeJobsCount / subscriptionInfo.subscription.maxActiveJobs) * 100}%` }
+                                            ]}
+                                        />
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Dynamic Quick Plan Options */}
+                            <View style={styles.quickPlansContainer}>
+                                {availablePlans.slice(0, 3).map((plan, index) => (
+                                    <TouchableOpacity
+                                        key={plan.planKey || index}
+                                        style={[
+                                            styles.quickPlanCard,
+                                            plan.planKey === 'pro' && styles.quickPlanCardPopular // Mark 90 days plan as popular
+                                        ]}
+                                        onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
+                                    >
+                                        {plan.planKey === 'pro' && (
+                                            <View style={styles.popularTag}>
+                                                <Text style={styles.popularTagText}>{t('best_value_tag')}</Text>
+                                            </View>
+                                        )}
+                                        <Ionicons
+                                            name={index === 0 ? 'flash' : index === 1 ? 'star' : 'rocket'}
+                                            size={24}
+                                            color={plan.planKey === 'pro' ? COLORS.white : COLORS.secondary}
+                                        />
+                                        <Text style={[styles.quickPlanName, plan.planKey === 'pro' && styles.quickPlanNameWhite]}>
+                                            {plan.name.replace(' Plan', '')}
+                                        </Text>
+                                        <Text style={[styles.quickPlanPrice, plan.planKey === 'pro' && styles.quickPlanPriceWhite]}>
+                                            ₹{plan.price}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <TouchableOpacity
+                                style={styles.viewAllPlansBtn}
+                                onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
+                            >
+                                <Text style={styles.viewAllPlansText}>{t('choose_other_plans')}</Text>
+                                <Ionicons name="arrow-forward" size={18} color={COLORS.secondary} />
+                            </TouchableOpacity>
                         </View>
-
-                        <TouchableOpacity
-                            style={styles.viewAllPlansBtn}
-                            onPress={() => router.push({ pathname: '/(employer)/subscription-plans', params: { tab: 'plans' } })}
-                        >
-                            <Text style={styles.viewAllPlansText}>Choose Other Plans</Text>
-                            <Ionicons name="arrow-forward" size={18} color={COLORS.secondary} />
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* Subscription Info Banner - When has active subscription */}
-                {subscriptionInfo?.canPostJob && subscriptionInfo?.subscription && (
-                    <View style={styles.subscriptionBanner}>
-                        <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                        <Text style={styles.subscriptionText}>
-                            {subscriptionInfo.subscription.remainingSlots} job slot(s) remaining • {subscriptionInfo.subscription.daysRemaining} days left
-                        </Text>
-                    </View>
-                )}
-
-                <Card>
-                    <Input
-                        label="Job Title"
-                        placeholder="e.g., Need Electrician for Home Wiring"
-                        value={formData.title}
-                        onChangeText={(text) => setFormData({ ...formData, title: text })}
-                        error={errors.title}
-                    />
-
-                    <Input
-                        label="Job Description"
-                        placeholder="Describe the job requirements..."
-                        value={formData.description}
-                        onChangeText={(text) => setFormData({ ...formData, description: text })}
-                        error={errors.description}
-                        multiline
-                        numberOfLines={4}
-                    />
-
-                    {/* Worker Type Selection */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.label}>Worker Type Required</Text>
-                        <TouchableOpacity
-                            style={[styles.dropdown, errors.workerType && styles.dropdownError]}
-                            onPress={() => setShowWorkerModal(true)}
-                        >
-                            <Text style={formData.workerType.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
-                                {formData.workerType.length > 0
-                                    ? formData.workerType[0]
-                                    : 'Select worker type'}
-                            </Text>
-                            <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-                        </TouchableOpacity>
-                        {errors.workerType && <Text style={styles.errorText}>{errors.workerType}</Text>}
-                    </View>
-
-                    {/* Skills Selection (Dropdown) */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.label}>Required Skills</Text>
-                        <TouchableOpacity
-                            style={styles.dropdown}
-                            onPress={() => {
-                                if (formData.workerType.length === 0) {
-                                    Alert.alert('Select Worker Type', 'Please select a worker type first to see relevant skills.');
-                                    return;
-                                }
-                                setShowSkillsModal(true);
-                            }}
-                        >
-                            <Text style={formData.skills.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
-                                {formData.skills.length > 0
-                                    ? formData.skills
-                                    : 'Select required skills'}
-                            </Text>
-                            <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <Input
-                        label="Daily Salary (₹)"
-                        placeholder="e.g., 500"
-                        value={formData.salary}
-                        onChangeText={(text) => setFormData({ ...formData, salary: text.replace(/[^0-9]/g, '') })}
-                        keyboardType="numeric"
-                        error={errors.salary}
-                    />
-
-                    <LocationPicker
-                        label="Location"
-                        placeholder="e.g., Kolkata, West Bengal"
-                        value={formData.location}
-                        onChangeLocation={(text, coords) => {
-                            setFormData({
-                                ...formData,
-                                location: text,
-                                coordinates: coords || null
-                            });
-                            setErrors({ ...errors, location: '' });
-                        }}
-                        error={errors.location}
-                    />
-
-                    {/* Work Type */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.label}>Work Type</Text>
-                        <View style={styles.workTypeContainer}>
-                            {WORK_TYPES.map((type) => (
-                                <TouchableOpacity
-                                    key={type}
-                                    style={[styles.workTypeOption, formData.workType === type && styles.workTypeSelected]}
-                                    onPress={() => setFormData({ ...formData, workType: type })}
-                                >
-                                    <Text style={[styles.workTypeText, formData.workType === type && styles.workTypeTextSelected]}>
-                                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    </View>
-
-                    {formData.workType === 'temporary' && (
-                        <Input
-                            label="Duration (Days)"
-                            placeholder="e.g., 7"
-                            value={formData.durationDays}
-                            onChangeText={(text) => setFormData({ ...formData, durationDays: text.replace(/[^0-9]/g, '') })}
-                            keyboardType="numeric"
-                            error={errors.durationDays}
-                        />
                     )}
 
-                    <Input
-                        label="Total Openings"
-                        placeholder="e.g., 1"
-                        value={formData.totalOpenings}
-                        onChangeText={(text) => setFormData({ ...formData, totalOpenings: text.replace(/[^0-9]/g, '') })}
-                        keyboardType="numeric"
+                    {/* Subscription Info Banner - When has active subscription */}
+                    {subscriptionInfo?.canPostJob && subscriptionInfo?.subscription && (
+                        <View style={styles.subscriptionBanner}>
+                            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                            <Text style={styles.subscriptionText}>
+                                {subscriptionInfo.subscription.remainingSlots} {t('job_slot_remaining')} • {subscriptionInfo.subscription.daysRemaining} {t('days_left')}
+                            </Text>
+                        </View>
+                    )}
+
+                    <Card>
+                        <Input
+                            label={t('job_title_label')}
+                            placeholder={t('job_title_placeholder')}
+                            value={formData.title}
+                            onChangeText={(text) => setFormData({ ...formData, title: text })}
+                            error={errors.title}
+                            editable={!isEditing}
+                        />
+
+                        <Input
+                            label={t('description')}
+                            placeholder={t('job_desc_placeholder')}
+                            value={formData.description}
+                            onChangeText={(text) => setFormData({ ...formData, description: text })}
+                            error={errors.description}
+                            multiline
+                            numberOfLines={4}
+                            editable={!isEditing}
+                        />
+
+                        {/* Worker Type Selection */}
+                        <View style={[styles.fieldContainer, isEditing && { opacity: 0.7 }]}>
+                            <Text style={styles.label}>{t('worker_type_required')}</Text>
+                            <TouchableOpacity
+                                style={[styles.dropdown, errors.workerType && styles.dropdownError]}
+                                onPress={() => !isEditing && setShowWorkerModal(true)}
+                                disabled={isEditing}
+                            >
+                                <Text style={formData.workerType.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
+                                    {formData.workerType.length > 0
+                                        ? formData.workerType[0]
+                                        : t('select_worker_type_placeholder')}
+                                </Text>
+                                <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                            {errors.workerType && <Text style={styles.errorText}>{errors.workerType}</Text>}
+                        </View>
+
+                        {/* Skills Selection (Dropdown) */}
+                        <View style={[styles.fieldContainer, isEditing && { opacity: 0.7 }]}>
+                            <Text style={styles.label}>{t('required_skills')}</Text>
+                            <TouchableOpacity
+                                style={styles.dropdown}
+                                onPress={() => {
+                                    if (isEditing) return;
+                                    if (formData.workerType.length === 0) {
+                                        Alert.alert(t('select_worker_type'), t('skills_helper'));
+                                        return;
+                                    }
+                                    setShowSkillsModal(true);
+                                }}
+                                disabled={isEditing}
+                            >
+                                <Text style={formData.skills.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
+                                    {formData.skills.length > 0
+                                        ? formData.skills
+                                        : t('select_skills_placeholder')}
+                                </Text>
+                                <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Input
+                            label={t('daily_salary_label')}
+                            placeholder="e.g., 500"
+                            value={formData.salary}
+                            onChangeText={(text) => setFormData({ ...formData, salary: text.replace(/[^0-9]/g, '') })}
+                            keyboardType="numeric"
+                            error={errors.salary}
+                            editable={!isEditing}
+                        />
+
+                        <LocationPicker
+                            label={t('location')}
+                            placeholder="e.g., Kolkata, West Bengal"
+                            value={formData.location}
+                            onChangeLocation={(text, coords, place) => {
+                                setFormData({
+                                    ...formData,
+                                    location: text,
+                                    city: place?.city || '',
+                                    state: place?.state || '',
+                                    coordinates: coords || null
+                                });
+                                setErrors({ ...errors, location: '' });
+                            }}
+                            error={errors.location}
+                        />
+
+                        {/* Work Type */}
+                        <View style={[styles.fieldContainer, isEditing && { opacity: 0.7 }]}>
+                            <Text style={styles.label}>{t('job_type')}</Text>
+                            <View style={styles.workTypeContainer}>
+                                {WORK_TYPES.map((type) => (
+                                    <TouchableOpacity
+                                        key={type}
+                                        style={[styles.workTypeOption, formData.workType === type && styles.workTypeSelected]}
+                                        onPress={() => !isEditing && setFormData({ ...formData, workType: type })}
+                                        disabled={isEditing}
+                                    >
+                                        <Text style={[styles.workTypeText, formData.workType === type && styles.workTypeTextSelected]}>
+                                            {t('filter_' + type)}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        {formData.workType === 'temporary' && (
+                            <Input
+                                label={t('duration_days_label')}
+                                placeholder="e.g., 7"
+                                value={formData.durationDays}
+                                onChangeText={(text) => setFormData({ ...formData, durationDays: text.replace(/[^0-9]/g, '') })}
+                                keyboardType="numeric"
+                                error={errors.durationDays}
+                                editable={!isEditing}
+                            />
+                        )}
+
+                        <Input
+                            label={t('total_openings_label')}
+                            placeholder="e.g., 1"
+                            value={formData.totalOpenings}
+                            onChangeText={(text) => setFormData({ ...formData, totalOpenings: text.replace(/[^0-9]/g, '') })}
+                            keyboardType="numeric"
+                            editable={!isEditing}
+                        />
+
+                        {/* Experience Range */}
+                        <View style={styles.rowContainer}>
+                            <View style={styles.halfWidth}>
+                                <Input
+                                    label={t('min_exp_label')}
+                                    placeholder="0"
+                                    value={formData.minExperience}
+                                    onChangeText={(text) => setFormData({ ...formData, minExperience: text.replace(/[^0-9]/g, '') })}
+                                    keyboardType="numeric"
+                                    error={errors.minExperience}
+                                    editable={!isEditing}
+                                />
+                            </View>
+                            <View style={styles.halfWidth}>
+                                <Input
+                                    label={t('max_exp_label')}
+                                    placeholder="5"
+                                    value={formData.maxExperience}
+                                    onChangeText={(text) => setFormData({ ...formData, maxExperience: text.replace(/[^0-9]/g, '') })}
+                                    keyboardType="numeric"
+                                    error={errors.maxExperience}
+                                    editable={!isEditing}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Verification & Geo-tagging Options */}
+                        <View style={[styles.checkboxContainer, isEditing && { opacity: 0.7 }]}>
+                            <TouchableOpacity
+                                style={styles.checkboxRow}
+                                onPress={() => !isEditing && setFormData({ ...formData, otpVerificationRequired: !formData.otpVerificationRequired })}
+                                disabled={isEditing}
+                            >
+                                <View style={[styles.checkbox, formData.otpVerificationRequired && styles.checkboxChecked]}>
+                                    {formData.otpVerificationRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                                </View>
+                                <Text style={styles.checkboxLabel}>{t('otp_verify_req')}</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.checkboxRow}
+                                onPress={() => !isEditing && setFormData({ ...formData, geoTaggingRequired: !formData.geoTaggingRequired })}
+                                disabled={isEditing}
+                            >
+                                <View style={[styles.checkbox, formData.geoTaggingRequired && styles.checkboxChecked]}>
+                                    {formData.geoTaggingRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                                </View>
+                                <Text style={styles.checkboxLabel}>{t('geo_tag_req')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </Card>
+
+                    <Button
+                        title={isEditing ? t('update_job_location') : t('post_job')}
+                        onPress={handleSubmit}
+                        loading={loading}
+                        style={styles.submitButton}
                     />
+                </ScrollView>
 
-                    {/* Experience Range */}
-                    <View style={styles.rowContainer}>
-                        <View style={styles.halfWidth}>
-                            <Input
-                                label="Min Experience (Yrs)"
-                                placeholder="0"
-                                value={formData.minExperience}
-                                onChangeText={(text) => setFormData({ ...formData, minExperience: text.replace(/[^0-9]/g, '') })}
-                                keyboardType="numeric"
-                                error={errors.minExperience}
-                            />
-                        </View>
-                        <View style={styles.halfWidth}>
-                            <Input
-                                label="Max Experience (Yrs)"
-                                placeholder="5"
-                                value={formData.maxExperience}
-                                onChangeText={(text) => setFormData({ ...formData, maxExperience: text.replace(/[^0-9]/g, '') })}
-                                keyboardType="numeric"
-                                error={errors.maxExperience}
-                            />
-                        </View>
-                    </View>
-
-                    {/* Verification & Geo-tagging Options */}
-                    <View style={styles.checkboxContainer}>
-                        <TouchableOpacity
-                            style={styles.checkboxRow}
-                            onPress={() => setFormData({ ...formData, otpVerificationRequired: !formData.otpVerificationRequired })}
-                        >
-                            <View style={[styles.checkbox, formData.otpVerificationRequired && styles.checkboxChecked]}>
-                                {formData.otpVerificationRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
-                            </View>
-                            <Text style={styles.checkboxLabel}>Require OTP Verification for Work Logs</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.checkboxRow}
-                            onPress={() => setFormData({ ...formData, geoTaggingRequired: !formData.geoTaggingRequired })}
-                        >
-                            <View style={[styles.checkbox, formData.geoTaggingRequired && styles.checkboxChecked]}>
-                                {formData.geoTaggingRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
-                            </View>
-                            <Text style={styles.checkboxLabel}>Require Geo-tagging for Work Logs</Text>
-                        </TouchableOpacity>
-                    </View>
-                </Card>
-
-                <Button
-                    title="Post Job"
-                    onPress={handleSubmit}
-                    loading={loading}
-                    style={styles.submitButton}
+                {/* Modern Animated Subscription Modal */}
+                <AnimatedModal
+                    visible={showSubscriptionModal}
+                    type={modalConfig.type}
+                    title={modalConfig.title}
+                    message={modalConfig.message}
+                    primaryButtonText={modalConfig.primaryButtonText}
+                    secondaryButtonText={t('go_back')}
+                    onPrimaryPress={handleModalPrimaryPress}
+                    onSecondaryPress={handleModalClose}
+                    onClose={handleModalClose}
                 />
-            </ScrollView>
 
-            {/* Modern Animated Subscription Modal */}
-            <AnimatedModal
-                visible={showSubscriptionModal}
-                type={modalConfig.type}
-                title={modalConfig.title}
-                message={modalConfig.message}
-                primaryButtonText={modalConfig.primaryButtonText}
-                secondaryButtonText="Go Back"
-                onPrimaryPress={handleModalPrimaryPress}
-                onSecondaryPress={handleModalClose}
-                onClose={handleModalClose}
-            />
+                {/* Worker Type Selection Modal */}
+                <SelectionModal
+                    visible={showWorkerModal}
+                    title={t('select_worker_type')}
+                    options={WORKER_TYPES}
+                    selectedValue={formData.workerType[0]}
+                    onSelect={handleWorkerTypeSelect}
+                    onClose={() => setShowWorkerModal(false)}
+                    multiSelect={false}
+                />
 
-            {/* Worker Type Selection Modal */}
-            <SelectionModal
-                visible={showWorkerModal}
-                title="Select Worker Type"
-                options={WORKER_TYPES}
-                selectedValue={formData.workerType[0]}
-                onSelect={handleWorkerTypeSelect}
-                onClose={() => setShowWorkerModal(false)}
-                multiSelect={false}
-            />
-
-            {/* Skills Selection Modal */}
-            <SelectionModal
-                visible={showSkillsModal}
-                title="Select Required Skills"
-                options={getSuggestedSkills()}
-                selectedValue={formData.skills ? formData.skills.split(', ') : []}
-                onSelect={handleSkillsSelect}
-                onClose={() => setShowSkillsModal(false)}
-                multiSelect={true}
-            />
-        </KeyboardAvoidingView>
+                {/* Skills Selection Modal */}
+                <SelectionModal
+                    visible={showSkillsModal}
+                    title={t('select_skills')}
+                    options={getSuggestedSkills()}
+                    selectedValue={formData.skills ? formData.skills.split(', ') : []}
+                    onSelect={handleSkillsSelect}
+                    onClose={() => setShowSkillsModal(false)}
+                    multiSelect={true}
+                />
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 

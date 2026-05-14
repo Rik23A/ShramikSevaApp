@@ -23,6 +23,8 @@ export async function registerForPushNotificationsAsync() {
             importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#FF231F7C',
+            showBadge: true,
+            enableVibrate: true,
         });
     }
 
@@ -44,28 +46,23 @@ export async function registerForPushNotificationsAsync() {
                 Constants?.expoConfig?.extra?.eas?.projectId || Constants?.easConfig?.projectId;
 
             if (projectId) {
+                console.log('📡 [PushService] Attempting to get token with ProjectId:', projectId);
                 token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
             } else {
+                console.log('📡 [PushService] Attempting to get token without explicitly passed ProjectId');
                 token = (await Notifications.getExpoPushTokenAsync()).data;
             }
-            console.log('Push Token:', token);
+            console.log('✅ [PushService] Expo Push Token obtained:', token);
         } catch (e) {
-            // Handle specific errors gracefully
-            if (e.message && (e.message.includes('No "projectId" found') || e.message.includes('Invalid uuid'))) {
-                console.warn('⚠️ Push Notifications Warning: EAS Project ID is missing or invalid.');
-                console.warn('To enable Push Notifications, you must run "eas build:configure" in the ShramikSevaApp directory.');
-                console.warn('App will continue without Push Notification capability.');
-                // Attempt fallback if possible, though likely to fail if config is malformed
-                try {
-                    token = (await Notifications.getExpoPushTokenAsync()).data;
-                    console.log('Push Token (fallback):', token);
-                } catch (fallbackError) {
-                    console.log('Fallback token retrieval also failed (expected without EAS config).');
-                }
-            } else {
-                console.error('Error getting push token:', e);
+            console.error('❌ [PushService] Error getting push token:', e.message);
+            // Attempt a quick fallback without projectId if it failed with one
+            try {
+                console.log('📡 [PushService] Attempting fallback token retrieval...');
+                token = (await Notifications.getExpoPushTokenAsync()).data;
+                console.log('✅ [PushService] Fallback token obtained:', token);
+            } catch (fallbackError) {
+                console.error('❌ [PushService] Fallback also failed:', fallbackError.message);
             }
-            return null;
         }
     } else {
         console.log('Must use physical device for Push Notifications');
@@ -78,17 +75,13 @@ export async function registerForPushNotificationsAsync() {
     return token;
 }
 
+import { updatePushToken } from './userService';
+
 async function sendPushTokenToBackend(token) {
     try {
-        const authToken = await AsyncStorage.getItem('token');
-        if (!authToken) return;
-
-        await axios.put(`${API_URL}/users/push-token`, { pushToken: token }, {
-            headers: { Authorization: `Bearer ${authToken}` }
-        });
-        console.log('Push token sent to backend');
+        await updatePushToken(token);
+        console.log('Push token sent to backend via userService');
     } catch (error) {
         console.error('Error sending push token to backend:', error.message);
-        // Retry maybe?
     }
 }

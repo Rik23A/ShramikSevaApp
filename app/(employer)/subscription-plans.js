@@ -9,15 +9,17 @@ import {
     Animated,
     RefreshControl,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import { getSubscriptionPlans, purchaseSubscription } from '../../services/subscriptionService';
 import { useSubscription } from '../../context/SubscriptionContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Button from '../../components/ui/Button';
 
 export default function SubscriptionPlansScreen() {
+    const { t } = useLanguage();
     const params = useLocalSearchParams();
     const {
         subscription: currentSubscription,
@@ -47,6 +49,12 @@ export default function SubscriptionPlansScreen() {
         }
     }, [params.tab, hasActiveSubscription, plansLoading, subLoading]);
 
+    useFocusEffect(
+        useCallback(() => {
+            refreshSubscription();
+        }, [refreshSubscription])
+    );
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await refreshSubscription();
@@ -59,7 +67,7 @@ export default function SubscriptionPlansScreen() {
 
     const handlePurchase = async () => {
         if (!selectedPlan) {
-            Alert.alert('Select a Plan', 'Please select a subscription plan to continue');
+            Alert.alert(t('error_select_plan'), t('error_select_plan_msg'));
             return;
         }
 
@@ -92,7 +100,7 @@ export default function SubscriptionPlansScreen() {
     };
 
     if (subLoading || plansLoading) {
-        return <LoadingSpinner fullScreen message="Loading subscription data..." />;
+        return <LoadingSpinner fullScreen message={t('loading_sub_data')} />;
     }
 
     // Tab Header Component
@@ -108,7 +116,7 @@ export default function SubscriptionPlansScreen() {
                     color={activeTab === 'myplan' ? COLORS.white : COLORS.textSecondary}
                 />
                 <Text style={[styles.tabText, activeTab === 'myplan' && styles.tabTextActive]}>
-                    My Plan
+                    {t('my_plan')}
                 </Text>
                 {hasActiveSubscription && currentSubscription?.daysRemaining <= 7 && (
                     <View style={styles.warningBadge}>
@@ -126,7 +134,7 @@ export default function SubscriptionPlansScreen() {
                     color={activeTab === 'plans' ? COLORS.white : COLORS.textSecondary}
                 />
                 <Text style={[styles.tabText, activeTab === 'plans' && styles.tabTextActive]}>
-                    Buy Plans
+                    {t('buy_plans')}
                 </Text>
             </TouchableOpacity>
         </View>
@@ -148,12 +156,12 @@ export default function SubscriptionPlansScreen() {
                                 <View style={styles.noSubIcon}>
                                     <Ionicons name="alert-circle-outline" size={80} color={COLORS.warning} />
                                 </View>
-                                <Text style={styles.noSubTitle}>No Active Subscription</Text>
+                                <Text style={styles.noSubTitle}>{t('no_active_sub')}</Text>
                                 <Text style={styles.noSubText}>
-                                    You need a subscription to post jobs and access candidate database.
+                                    {t('need_sub_post_jobs')}
                                 </Text>
                                 <Button
-                                    title="Browse Plans"
+                                    title={t('browse_plans')}
                                     onPress={() => setActiveTab('plans')}
                                     style={styles.browseBtn}
                                     icon={<Ionicons name="arrow-forward" size={18} color={COLORS.white} />}
@@ -165,19 +173,19 @@ export default function SubscriptionPlansScreen() {
                                 {currentSubscription?.daysRemaining <= 0 ? (
                                     <View style={[styles.statusBanner, styles.statusExpired]}>
                                         <Ionicons name="warning" size={24} color={COLORS.white} />
-                                        <Text style={styles.statusBannerText}>Subscription Expired!</Text>
+                                        <Text style={styles.statusBannerText}>{t('expired_title')}</Text>
                                     </View>
                                 ) : currentSubscription?.daysRemaining <= 7 ? (
                                     <View style={[styles.statusBanner, styles.statusWarning]}>
                                         <Ionicons name="time" size={24} color={COLORS.white} />
                                         <Text style={styles.statusBannerText}>
-                                            Expiring in {currentSubscription.daysRemaining} days!
+                                            {t('expiring_in').replace('{days}', currentSubscription.daysRemaining)}
                                         </Text>
                                     </View>
                                 ) : (
                                     <View style={[styles.statusBanner, styles.statusActive]}>
                                         <Ionicons name="checkmark-circle" size={24} color={COLORS.white} />
-                                        <Text style={styles.statusBannerText}>Active Subscription</Text>
+                                        <Text style={styles.statusBannerText}>{t('active_subscription')}</Text>
                                     </View>
                                 )}
 
@@ -193,10 +201,10 @@ export default function SubscriptionPlansScreen() {
                                         </View>
                                         <View style={styles.planTypeInfo}>
                                             <Text style={styles.planTypeName}>
-                                                {currentSubscription?.planType?.toUpperCase()} PLAN
+                                                {(t(currentSubscription?.planType) || currentSubscription?.planType?.toUpperCase())} {t('plan').toUpperCase()}
                                             </Text>
-                                            <Text style={styles.planTypeDate}>
-                                                Expires: {formatDate(currentSubscription?.endDate)}
+                                            <Text style={[styles.planTypeDate, currentSubscription?.daysRemaining <= 0 && { color: COLORS.danger }]}>
+                                                {t('expires')}: {formatDate(currentSubscription?.endDate)} {currentSubscription?.daysRemaining <= 0 ? `(${t('expired_title')})` : ''}
                                             </Text>
                                         </View>
                                     </View>
@@ -207,18 +215,22 @@ export default function SubscriptionPlansScreen() {
                                     <View style={styles.statsGrid}>
                                         <View style={styles.statItem}>
                                             <Ionicons name="time-outline" size={28} color={COLORS.secondary} />
-                                            <Text style={styles.statValue}>{Math.max(0, currentSubscription?.daysRemaining || 0)}</Text>
-                                            <Text style={styles.statLabel}>Days Left</Text>
+                                            <Text style={[styles.statValue, currentSubscription?.daysRemaining <= 0 && { color: COLORS.danger }]}>
+                                                {Math.max(0, currentSubscription?.daysRemaining || 0)}
+                                            </Text>
+                                            <Text style={[styles.statLabel, currentSubscription?.daysRemaining <= 0 && { color: COLORS.danger }]}>
+                                                {t('days_left')}
+                                            </Text>
                                         </View>
                                         <View style={styles.statItem}>
                                             <Ionicons name="briefcase-outline" size={28} color={COLORS.secondary} />
                                             <Text style={styles.statValue}>{currentSubscription?.maxJobs || 0}</Text>
-                                            <Text style={styles.statLabel}>Job Slots</Text>
+                                            <Text style={styles.statLabel}>{t('job_slots')}</Text>
                                         </View>
                                         <View style={styles.statItem}>
                                             <Ionicons name="people-outline" size={28} color={COLORS.secondary} />
                                             <Text style={styles.statValue}>{currentSubscription?.credits || 0}</Text>
-                                            <Text style={styles.statLabel}>DB Credits</Text>
+                                            <Text style={styles.statLabel}>{t('db_credits')}</Text>
                                         </View>
                                     </View>
 
@@ -226,7 +238,7 @@ export default function SubscriptionPlansScreen() {
                                     {currentSubscription?.features && currentSubscription.features.length > 0 && (
                                         <>
                                             <View style={styles.divider} />
-                                            <Text style={styles.featuresTitle}>Plan Features</Text>
+                                            <Text style={styles.featuresTitle}>{t('plan_features')}</Text>
                                             {currentSubscription.features.map((feature, idx) => (
                                                 <View key={idx} style={styles.featureRow}>
                                                     <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
@@ -241,14 +253,14 @@ export default function SubscriptionPlansScreen() {
                                 <View style={styles.actionButtons}>
                                     {currentSubscription?.daysRemaining > 0 && (
                                         <Button
-                                            title="Post a Job"
+                                            title={t('post_job')}
                                             onPress={() => router.push('/(employer)/post-job')}
                                             style={styles.postJobBtn}
                                             icon={<Ionicons name="add-circle" size={20} color={COLORS.white} />}
                                         />
                                     )}
                                     <Button
-                                        title={currentSubscription?.daysRemaining <= 0 ? "Renew Subscription" : "Upgrade Plan"}
+                                        title={currentSubscription?.daysRemaining <= 0 ? t('renew_sub') : t('upgrade_plan')}
                                         onPress={() => setActiveTab('plans')}
                                         style={currentSubscription?.daysRemaining <= 0 ? styles.renewBtn : styles.upgradeBtn}
                                         textStyle={currentSubscription?.daysRemaining <= 0 ? {} : styles.upgradeBtnText}
@@ -262,9 +274,9 @@ export default function SubscriptionPlansScreen() {
                     <View>
                         {/* Header */}
                         <View style={styles.header}>
-                            <Text style={styles.headerTitle}>Choose Your Plan</Text>
+                            <Text style={styles.headerTitle}>{t('choose_plan')}</Text>
                             <Text style={styles.headerSubtitle}>
-                                Get unlimited candidate responses and hire the best workers
+                                {t('unlimited_responses')}
                             </Text>
                         </View>
 
@@ -273,8 +285,8 @@ export default function SubscriptionPlansScreen() {
                             <View style={styles.upgradeNotice}>
                                 <Ionicons name="information-circle" size={20} color={COLORS.primary} />
                                 <Text style={styles.upgradeNoticeText}>
-                                    Your current plan expires in {currentSubscription?.daysRemaining} days.
-                                    New plan will start after expiry.
+                                    {t('upgrade_notice_part1') || 'Your current plan expires in'} {currentSubscription?.daysRemaining} {t('days')}.
+                                    {t('upgrade_notice_part2') || 'New plan will start after expiry.'}
                                 </Text>
                             </View>
                         )}
@@ -288,20 +300,20 @@ export default function SubscriptionPlansScreen() {
                                         styles.planCard,
                                         selectedPlan === plan.planKey && styles.planCardSelected,
                                         plan.popular && styles.planCardPopular,
-                                        currentSubscription?.planType === plan.planKey && styles.planCardActive
+                                        (hasActiveSubscription && currentSubscription?.planType === plan.planKey) && styles.planCardActive
                                     ]}
                                     onPress={() => handleSelectPlan(plan)}
                                     activeOpacity={0.8}
                                 >
                                     {plan.popular && (
                                         <View style={styles.popularBadge}>
-                                            <Text style={styles.popularText}>MOST POPULAR</Text>
+                                            <Text style={styles.popularText}>{t('popular')}</Text>
                                         </View>
                                     )}
 
-                                    {currentSubscription?.planType === plan.planKey && (
+                                    {hasActiveSubscription && currentSubscription?.planType === plan.planKey && (
                                         <View style={styles.activeBadge}>
-                                            <Text style={styles.activeBadgeText}>CURRENT PLAN</Text>
+                                            <Text style={styles.activeBadgeText}>{t('current_plan_badge')}</Text>
                                         </View>
                                     )}
 
@@ -320,10 +332,10 @@ export default function SubscriptionPlansScreen() {
                                         <View style={styles.planPriceContainer}>
                                             <Text style={styles.planPrice}>{formatPrice(plan.price)}</Text>
                                             {(plan.planKey === 'pro') && (
-                                                <Text style={styles.planSaving}>Save 40%</Text>
+                                                <Text style={styles.planSaving}>{t('save_percent').replace('{percent}', '40')}</Text>
                                             )}
                                             {(plan.planKey === 'premium') && (
-                                                <Text style={styles.planSaving}>Save 73%</Text>
+                                                <Text style={styles.planSaving}>{t('save_percent').replace('{percent}', '73')}</Text>
                                             )}
                                         </View>
                                     </View>
@@ -346,14 +358,14 @@ export default function SubscriptionPlansScreen() {
                             ))
                         ) : (
                             <View style={styles.noPlansContainer}>
-                                <Text style={styles.noPlansText}>No plans available at the moment.</Text>
+                                <Text style={styles.noPlansText}>{t('no_plans_available')}</Text>
                             </View>
                         )}
 
                         {/* Purchase Button */}
                         {plans.length > 0 && (
                             <Button
-                                title={purchasing ? 'Processing...' : `Purchase${selectedPlan ? '' : ' (Select a Plan)'}`}
+                                title={purchasing ? t('processing') : `${t('purchase')}${selectedPlan ? '' : ` (${t('error_select_plan')})`}`}
                                 onPress={handlePurchase}
                                 loading={purchasing}
                                 disabled={!selectedPlan || purchasing}
@@ -363,7 +375,7 @@ export default function SubscriptionPlansScreen() {
 
                         {/* Note */}
                         <Text style={styles.noteText}>
-                            🔒 Secure payment integration via Paytm.
+                            🔒 {t('secure_payment')}
                         </Text>
                     </View>
                 )}

@@ -25,8 +25,8 @@ export const updateJob = async (jobId, jobData) => {
 };
 
 // Apply to a job (worker)
-export const applyToJob = async (jobId) => {
-    const response = await API.post(`/jobs/${jobId}/apply`);
+export const applyToJob = async (jobId, cvId) => {
+    const response = await API.post(`/jobs/${jobId}/apply`, { cvId });
     return response.data;
 };
 
@@ -90,19 +90,23 @@ export const rejectHiringRequest = async (applicationId) => {
     return response.data;
 };
 
-// Get completed jobs (worker)
-export const getCompletedJobs = async () => {
-    // Note: This endpoint requires user ID in the route, but the backend will get it from the auth token
-    // The actual route is /users/:userId/completed-jobs but we need to get current user ID first
-    // For now, using the assigned jobs endpoint which filters by status
-    const response = await API.get('/jobs/assigned');
-    return response.data.filter(job => job.status === 'completed');
+// Get completed jobs (worker) — uses the real backend endpoint with userId
+export const getCompletedJobs = async (userId) => {
+    const response = await API.get(`/users/${userId}/completed-jobs`);
+    return response.data;
 };
 // Close a job (employer)
 export const closeJob = async (jobId) => {
     const response = await API.put(`/jobs/${jobId}`, { status: 'closed' });
     return response.data;
 };
+
+// Reopen a closed job (reactivate it as 'open')
+export const reopenJob = async (jobId) => {
+    const response = await API.put(`/jobs/${jobId}`, { status: 'open' });
+    return response.data;
+};
+
 
 // Update job location (requires active subscription)
 export const updateJobLocation = async (jobId, locationData) => {

@@ -12,8 +12,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
 import AnimatedModal from '../ui/AnimatedModal';
 import { router } from 'expo-router';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function WorklogAccessModal({ visible, onClose, onSuccess }) {
+    const { t } = useLanguage();
     const [loading, setLoading] = useState(false);
 
     const handleUnlock = async () => {
@@ -22,44 +24,39 @@ export default function WorklogAccessModal({ visible, onClose, onSuccess }) {
             pathname: '/(employer)/payment',
             params: {
                 planId: 'worklog_access',
-                planName: 'Worklog Access Add-on',
+                planName: t('worklog_access_addon'),
                 amount: 2499
             }
         });
     };
 
     return (
-        <AnimatedModal visible={visible} onClose={onClose}>
+        <AnimatedModal
+            visible={visible}
+            onClose={onClose}
+            title={t('unlock_work_logs')}
+            message={t('worklog_unlock_description')}
+        >
             <View style={styles.container}>
-                <View style={styles.iconContainer}>
-                    <Ionicons name="lock-closed" size={60} color={COLORS.primary} />
-                </View>
-
-                <Text style={styles.title}>Unlock Work Logs</Text>
-
-                <Text style={styles.description}>
-                    Get real-time tracking, attendance verification, and detailed daily work logs for your hired workers.
-                </Text>
-
                 <View style={styles.featuresContainer}>
                     <View style={styles.featureItem}>
                         <Ionicons name="checkmark-circle" size={20} color={COLORS.secondary} />
-                        <Text style={styles.featureText}>Live Attendance (Start/End OTPs)</Text>
+                        <Text style={styles.featureText}>{t('live_attendance')}</Text>
                     </View>
                     <View style={styles.featureItem}>
                         <Ionicons name="checkmark-circle" size={20} color={COLORS.secondary} />
-                        <Text style={styles.featureText}>Photo Verification at Site</Text>
+                        <Text style={styles.featureText}>{t('photo_verification')}</Text>
                     </View>
                     <View style={styles.featureItem}>
                         <Ionicons name="checkmark-circle" size={20} color={COLORS.secondary} />
-                        <Text style={styles.featureText}>Historical Work Log Records</Text>
+                        <Text style={styles.featureText}>{t('historical_work_logs')}</Text>
                     </View>
                 </View>
 
                 <View style={styles.priceContainer}>
-                    <Text style={styles.priceLabel}>One-time Addon Fee</Text>
+                    <Text style={styles.priceLabel}>{t('one_time_addon_fee')}</Text>
                     <Text style={styles.price}>₹2,499</Text>
-                    <Text style={styles.pricePeriod}>per month</Text>
+                    <Text style={styles.pricePeriod}>{t('per_month')}</Text>
                 </View>
 
                 <TouchableOpacity
@@ -70,16 +67,16 @@ export default function WorklogAccessModal({ visible, onClose, onSuccess }) {
                     {loading ? (
                         <ActivityIndicator color={COLORS.white} />
                     ) : (
-                        <Text style={styles.unlockButtonText}>Unlock Now</Text>
+                        <Text style={styles.unlockButtonText}>{t('unlock_now')}</Text>
                     )}
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-                    <Text style={styles.cancelButtonText}>Maybe Later</Text>
+                    <Text style={styles.cancelButtonText}>{t('maybe_later')}</Text>
                 </TouchableOpacity>
 
                 <Text style={styles.note}>
-                    Already included in the <Text style={styles.bold}>Premium Plan</Text>.
+                    {t('premium_plan_include')}
                 </Text>
             </View>
         </AnimatedModal>
@@ -88,7 +85,7 @@ export default function WorklogAccessModal({ visible, onClose, onSuccess }) {
 
 const styles = StyleSheet.create({
     container: {
-        padding: 24,
+        padding: 16,
         alignItems: 'center',
     },
     iconContainer: {
@@ -133,7 +130,7 @@ const styles = StyleSheet.create({
     },
     priceContainer: {
         alignItems: 'center',
-        marginBottom: 30,
+        marginBottom: 20,
     },
     priceLabel: {
         fontSize: 12,

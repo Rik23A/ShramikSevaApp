@@ -77,3 +77,21 @@ export const uploadDocument = async (documentData) => {
     const response = await API.post('/documents', documentData);
     return response.data;
 };
+
+// Update push token for notifications
+export const updatePushToken = async (pushToken) => {
+    try {
+        const response = await API.put('/users/push-token', { pushToken });
+        console.log('✅ Push token updated successfully on backend');
+        return response.data;
+    } catch (error) {
+        console.error('❌ Failed to update push token on backend:', error.message);
+        throw error;
+    }
+};
+
+// Change user password
+export const changePassword = async (newPassword) => {
+    const response = await API.put('/users/change-password', { newPassword });
+    return response.data;
+};

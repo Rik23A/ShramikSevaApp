@@ -94,7 +94,7 @@ const WorkLogHistoryModal = ({ visible, jobId, onClose }) => {
                                             log.status === 'completed' && styles.statusTextCompleted,
                                             log.status === 'in-progress' && styles.statusTextProgress,
                                             log.status === 'incomplete' && styles.statusTextIncomplete,
-                                        ]}>{log.status}</Text>
+                                        ]}>{t(log.status)}</Text>
                                     </View>
                                 </View>
 

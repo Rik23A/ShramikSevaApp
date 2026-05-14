@@ -15,12 +15,16 @@ import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { generateEndOtp, verifyEndOtp, uploadWorkPhoto, getWorkLogByJob } from '../../services/worklogService';
+import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import PhotoCapture from './PhotoCapture';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import * as Haptics from 'expo-haptics';
 
 const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
     const { user } = useAuth();
+    const { showToast } = useToast();
+    const { t } = useLanguage();
     const { socket, connected } = useSocket();
 
     const [loading, setLoading] = useState(true);
@@ -46,19 +50,38 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
     const fetchWorkLog = async () => {
         setLoading(true);
         try {
+            const { getJobById } = require('../../services/jobService');
+            const jobData = await getJobById(jobId);
+
             const data = await getWorkLogByJob(jobId);
             setWorkLog(data);
 
-            if (!data.startOtpVerified || !data.startPhoto) {
-                Alert.alert('Work Not Started', 'You need to start work before you can end it.');
+            // If OTP is required, ensure start OTP was verified BEFORE checking photo
+            if (jobData?.otpVerificationRequired && !data.startOtpVerified) {
+                Alert.alert(t('work_not_started') || 'Work Not Started', t('start_work_required') || 'You need to start work before you can end it.');
+                onClose();
+                return;
+            }
+
+            // Regardless of OTP, a start photo MUST exist
+            if (!data.startPhoto) {
+                Alert.alert(t('work_not_started') || 'Work Not Started', t('start_work_required') || 'You need to start work before you can end it.');
                 onClose();
                 return;
             }
 
             if (data.endPhoto) {
                 console.log('End photo already uploaded');
-                Alert.alert('Success', 'Work already ended for today.');
+                Alert.alert(t('success'), t('work_already_ended') || 'Work already ended for today.');
                 onClose();
+                return;
+            }
+
+            // Auto bypass end OTP if the job doesn't require it
+            if (jobData && !jobData.otpVerificationRequired) {
+                console.log('OTP not required, bypassing');
+                setOtpVerified(true);
+                setCurrentStep(3);
                 return;
             }
 
@@ -72,7 +95,7 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                 setCurrentStep(2);
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to load work information.');
+            Alert.alert(t('error_title'), t('failed_to_load_work_info') || 'Failed to load work information.');
             onClose();
         } finally {
             setLoading(false);
@@ -87,15 +110,15 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             setCurrentStep(2);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             Alert.alert(
-                'OTP Sent to Employer',
-                'An OTP has been sent to your employer. Please ask them for the OTP to continue.',
-                [{ text: 'OK' }]
+                t('otp_sent_to_employer') || 'OTP Sent to Employer',
+                t('otp_sent_msg') || 'An OTP has been sent to your employer. Please ask them for the OTP to continue.',
+                [{ text: t('ok') || 'OK' }]
             );
         } catch (error) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             console.error('Error requesting end OTP:', error);
-            const errorMessage = error?.response?.data?.message || error?.message || 'Failed to request OTP';
-            Alert.alert('Error', errorMessage);
+            const errorMessage = error?.response?.data?.message || error?.message || t('failed_to_request_otp') || 'Failed to request OTP';
+            Alert.alert(t('error_title'), errorMessage);
         } finally {
             setLoading(false);
         }
@@ -103,7 +126,7 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
 
     const handleVerifyOtp = async () => {
         if (otp.length !== 6) {
-            Alert.alert('Invalid OTP', 'Please enter a 6-digit OTP');
+            Alert.alert(t('invalid_otp') || 'Invalid OTP', t('enter_6_digit_otp') || 'Please enter a 6-digit OTP');
             return;
         }
 
@@ -116,8 +139,8 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
         } catch (error) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             console.error('Error verifying end OTP:', error);
-            const errorMessage = error?.response?.data?.message || error?.message || 'Invalid OTP';
-            Alert.alert('Error', errorMessage);
+            const errorMessage = error?.response?.data?.message || error?.message || t('invalid_otp') || 'Invalid OTP';
+            Alert.alert(t('error_title'), errorMessage);
         } finally {
             setLoading(false);
         }
@@ -128,22 +151,27 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
         try {
             await uploadWorkPhoto(jobId, user._id, 'end', photoUrl, location);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast({
+                type: 'success',
+                title: t('work_completed') || 'Work Completed',
+                message: t('work_session_completed') || 'Your work session has been completed. Payment will be processed shortly.'
+            });
             setTimeout(() => {
                 onSuccess && onSuccess();
                 onClose();
-            }, 1500);
+            }, 1000);
         } catch (error) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Error);
             console.error('Error uploading end photo:', error);
-            const errorMessage = error?.response?.data?.message || error?.message || 'Failed to upload photo';
-            Alert.alert('Error', errorMessage);
+            const errorMessage = error?.response?.data?.message || error?.message || t('failed_to_upload_photo') || 'Failed to upload photo';
+            Alert.alert(t('error_title'), errorMessage);
         } finally {
             setLoading(false);
         }
     };
 
     const calculateDuration = () => {
-        if (!workLog?.startTime) return 'N/A';
+        if (!workLog?.startTime) return t('any') || 'N/A';
         const start = new Date(workLog.startTime);
         const now = new Date();
         const diff = now - start;
@@ -164,28 +192,28 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                     <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                         <Ionicons name="close" size={24} color={COLORS.white} />
                     </TouchableOpacity>
-                    <Text style={styles.modalTitle}>End Work</Text>
+                    <Text style={styles.modalTitle}>{t('end_work')}</Text>
                     <View style={{ width: 40 }} />
                 </View>
 
                 {loading && !workLog ? (
-                    <LoadingSpinner fullScreen message="Loading..." />
+                    <LoadingSpinner fullScreen message={t('loading') || "Loading..."} />
                 ) : (
                     <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
                         {workLog && (
                             <View style={styles.summaryCard}>
                                 <View style={styles.summaryHeader}>
                                     <Ionicons name="time" size={24} color={COLORS.primary} />
-                                    <Text style={styles.summaryTitle}>Work Summary</Text>
+                                    <Text style={styles.summaryTitle}>{t('work_summary')}</Text>
                                 </View>
                                 <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Started at:</Text>
+                                    <Text style={styles.summaryLabel}>{t('started_at')}</Text>
                                     <Text style={styles.summaryValue}>
                                         {new Date(workLog.startTime).toLocaleTimeString()}
                                     </Text>
                                 </View>
                                 <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Duration:</Text>
+                                    <Text style={styles.summaryLabel}>{t('duration')}</Text>
                                     <Text style={styles.summaryValue}>{calculateDuration()}</Text>
                                 </View>
                             </View>
@@ -195,9 +223,9 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                             <View style={styles.stepContent}>
                                 <View style={styles.infoCard}>
                                     <Ionicons name="information-circle" size={48} color={COLORS.primary} />
-                                    <Text style={styles.infoTitle}>Ready to End Work?</Text>
+                                    <Text style={styles.infoTitle}>{t('ready_to_end_work')}</Text>
                                     <Text style={styles.infoText}>
-                                        Request an OTP from your employer to end work.
+                                        {t('request_otp_employer')}
                                     </Text>
                                 </View>
 
@@ -211,7 +239,7 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                                     ) : (
                                         <>
                                             <Ionicons name="key" size={20} color={COLORS.white} />
-                                            <Text style={styles.primaryButtonText}>Request OTP from Employer</Text>
+                                            <Text style={styles.primaryButtonText}>{t('request_otp_employer')}</Text>
                                         </>
                                     )}
                                 </TouchableOpacity>
@@ -222,9 +250,9 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                             <View style={styles.stepContent}>
                                 <View style={styles.otpCard}>
                                     <Ionicons name="lock-closed" size={48} color={COLORS.primary} />
-                                    <Text style={styles.otpTitle}>Enter OTP</Text>
+                                    <Text style={styles.otpTitle}>{t('enter_otp')}</Text>
                                     <Text style={styles.otpSubtitle}>
-                                        Ask your employer for the 6-digit OTP
+                                        {t('ask_employer_otp') || 'Ask your employer for the 6-digit OTP'}
                                     </Text>
 
                                     <TextInput
@@ -248,7 +276,7 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                                         ) : (
                                             <>
                                                 <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-                                                <Text style={styles.primaryButtonText}>Verify OTP</Text>
+                                                <Text style={styles.primaryButtonText}>{t('verify_otp')}</Text>
                                             </>
                                         )}
                                     </TouchableOpacity>
@@ -260,8 +288,8 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                             <View style={styles.stepContent}>
                                 <View style={styles.successCard}>
                                     <Ionicons name="checkmark-circle" size={48} color={COLORS.success} />
-                                    <Text style={styles.successTitle}>OTP Verified!</Text>
-                                    <Text style={styles.successText}>Capture a photo to end work</Text>
+                                    <Text style={styles.successTitle}>{t('otp_verified_success')}</Text>
+                                    <Text style={styles.successText}>{t('capture_photo_end')}</Text>
                                 </View>
                                 <PhotoCapture type="end" onPhotoUploaded={handlePhotoUploaded} />
                             </View>

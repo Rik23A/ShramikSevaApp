@@ -4,12 +4,14 @@ import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
 import * as Haptics from 'expo-haptics';
+import { useLanguage } from '../../context/LanguageContext';
 
 /**
  * OTP Display Component
  * Shows a large, readable OTP with copy functionality and countdown timer
  */
 const OtpDisplay = ({ otp, expiresAt, verified = false, onExpired }) => {
+    const { t } = useLanguage();
     const [timeLeft, setTimeLeft] = useState(null);
 
     useEffect(() => {
@@ -40,7 +42,7 @@ const OtpDisplay = ({ otp, expiresAt, verified = false, onExpired }) => {
     const handleCopy = async () => {
         await Clipboard.setStringAsync(otp);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Copied!', 'OTP copied to clipboard');
+        Alert.alert(t('copied'), t('otp_copied'));
     };
 
     const formatOtp = (otp) => {
@@ -54,16 +56,16 @@ const OtpDisplay = ({ otp, expiresAt, verified = false, onExpired }) => {
                 {verified ? (
                     <View style={styles.verifiedBadge}>
                         <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-                        <Text style={styles.verifiedText}>Verified</Text>
+                        <Text style={styles.verifiedText}>{t('verified')}</Text>
                     </View>
                 ) : (
                     <View style={styles.pendingBadge}>
                         <Ionicons name="time" size={20} color={COLORS.warning} />
-                        <Text style={styles.pendingText}>Waiting for verification</Text>
+                        <Text style={styles.pendingText}>{t('waiting_for_verification')}</Text>
                     </View>
                 )}
 
-                <Text style={styles.label}>Work OTP</Text>
+                <Text style={styles.label}>{t('work_otp')}</Text>
 
                 <View style={styles.otpContainer}>
                     <Text style={styles.otpText}>{formatOtp(otp)}</Text>
@@ -80,7 +82,7 @@ const OtpDisplay = ({ otp, expiresAt, verified = false, onExpired }) => {
                     <View style={styles.timerContainer}>
                         <Ionicons name="time-outline" size={16} color={COLORS.textSecondary} />
                         <Text style={styles.timerText}>
-                            Expires in: {timeLeft.hours}h {timeLeft.minutes}m {timeLeft.seconds}s
+                            {t('expires_in')} {timeLeft.hours}{t('hrs')} {timeLeft.minutes}{t('mins')} {timeLeft.seconds}{t('secs')}
                         </Text>
                     </View>
                 )}
@@ -88,14 +90,14 @@ const OtpDisplay = ({ otp, expiresAt, verified = false, onExpired }) => {
                 {timeLeft === 0 && (
                     <View style={styles.expiredContainer}>
                         <Ionicons name="alert-circle" size={16} color={COLORS.danger} />
-                        <Text style={styles.expiredText}>OTP Expired</Text>
+                        <Text style={styles.expiredText}>{t('otp_expired')}</Text>
                     </View>
                 )}
 
                 <View style={styles.instructionContainer}>
                     <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
                     <Text style={styles.instructionText}>
-                        Share this OTP with your employer to verify work
+                        {t('share_otp_msg')}
                     </Text>
                 </View>
             </View>

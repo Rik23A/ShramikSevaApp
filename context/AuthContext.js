@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { saveToken, saveUser, getToken, getUser, clearAuthData } from '../utils/storage';
 import { getProfile } from '../services/userService';
+import { setLogoutCallback } from '../services/api';
 
 const AuthContext = createContext({});
 
@@ -13,6 +14,13 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         loadStoredAuth();
     }, []);
+
+    // Register the logout function with the API module so the 401 interceptor
+    // can trigger a full logout + navigation without needing a React hook.
+    useEffect(() => {
+        setLogoutCallback(logout);
+    }, []);
+
 
     const loadStoredAuth = async () => {
         try {

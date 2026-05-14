@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -8,11 +8,12 @@ import {
     Image,
     Alert,
     Modal,
+    Linking,
 } from 'react-native';
-import { router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { COLORS } from '../../constants/config';
+import { COLORS, API_URL, WEB_URL } from '../../constants/config';
 import { translations, LANGUAGES } from '../../constants/translations';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -25,6 +26,8 @@ import EditWorkerProfileModal from '../../components/profile/EditWorkerProfileMo
 import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
 import DocumentUploadSection from '../../components/profile/DocumentUploadSection';
 import LanguageSelectionModal from '../../components/profile/LanguageSelectionModal';
+import AvailabilityModal from '../../components/profile/AvailabilityModal';
+import ChangePasswordModal from '../../components/profile/ChangePasswordModal';
 
 export default function ProfileScreen() {
     const { user, logout, updateUser, refreshProfile } = useAuth();
@@ -33,11 +36,15 @@ export default function ProfileScreen() {
     const [loading, setLoading] = useState(true);
     const [showLangModal, setShowLangModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
 
-    useEffect(() => {
-        fetchProfile();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            fetchProfile();
+        }, [])
+    );
 
     const fetchProfile = async () => {
         try {
@@ -58,7 +65,7 @@ export default function ProfileScreen() {
             t('logout'),
             t('logout_confirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
                     text: t('logout'),
                     style: 'destructive',
@@ -71,14 +78,20 @@ export default function ProfileScreen() {
         );
     };
 
-    const toggleAvailability = async () => {
-        const newAvailability = profile.availability === 'available' ? 'unavailable' : 'available';
+    const handleAvailabilityChange = async (newAvailability) => {
+        if (profile?.availability === newAvailability) {
+            setShowAvailabilityModal(false);
+            return;
+        }
+
         try {
             await updateProfile({ availability: newAvailability });
             setProfile({ ...profile, availability: newAvailability });
             updateUser({ availability: newAvailability });
         } catch (error) {
-            Alert.alert('Error', 'Failed to update availability');
+            Alert.alert(t('error'), t('failed_to_update_availability') || 'Failed to update availability');
+        } finally {
+            setShowAvailabilityModal(false);
         }
     };
 
@@ -103,7 +116,7 @@ export default function ProfileScreen() {
             updateUser({ profilePicture: uploadResult.fileUrl });
         } catch (error) {
             console.error('Failed to upload image:', error);
-            Alert.alert('Error', 'Failed to upload profile picture');
+            Alert.alert(t('error'), t('failed_to_upload_photo'));
         } finally {
             setUploading(false);
         }
@@ -114,7 +127,7 @@ export default function ProfileScreen() {
             await updateProfile(updatedData);
             setProfile({ ...profile, ...updatedData });
             updateUser(updatedData);
-            Alert.alert('Success', 'Profile updated successfully');
+            Alert.alert(t('success'), t('profile_updated_success') || 'Profile updated successfully');
         } catch (error) {
             throw error;
         }
@@ -175,11 +188,11 @@ export default function ProfileScreen() {
                         />
                         <TouchableOpacity
                             style={[styles.statusIndicator, profile?.availability === 'available' ? styles.statusOnline : styles.statusOffline]}
-                            onPress={toggleAvailability}
+                            onPress={() => setShowAvailabilityModal(true)}
                         />
                     </View>
 
-                    <Text style={styles.name}>{profile?.name || 'Worker'}</Text>
+                    <Text style={styles.name}>{profile?.name || t('worker')}</Text>
 
                     <View style={styles.ratingBadge}>
                         <Ionicons name="star" size={14} color="#FFD700" />
@@ -188,7 +201,7 @@ export default function ProfileScreen() {
 
                     <TouchableOpacity
                         style={[styles.availabilityBadge, profile?.availability === 'available' ? styles.bgSuccess : styles.bgDanger]}
-                        onPress={toggleAvailability}
+                        onPress={() => setShowAvailabilityModal(true)}
                     >
                         <Text style={[styles.availabilityText, { color: profile?.availability === 'available' ? '#1B5E20' : '#B71C1C' }]}>
                             {profile?.availability === 'available' ? t('available') : t('unavailable')}
@@ -211,7 +224,7 @@ export default function ProfileScreen() {
                             <Text style={styles.statNumber}>
                                 {profile?.hourlyRate ? `₹${profile.hourlyRate}` : '₹0'}
                             </Text>
-                            <Text style={styles.statLabel}>{t('hourly_rate') || t('work_rate')}</Text>
+                            <Text style={styles.statLabel}>{t('hourly_rate')}</Text>
                         </View>
                     </View>
 
@@ -362,7 +375,7 @@ export default function ProfileScreen() {
                             </View>
                             <View style={styles.menuContent}>
                                 <Text style={styles.menuValue}>
-                                    {profile?.isFresher ? t('fresher') : `${profile?.experience || 0} ${t('years_exp')}`}
+                                    {profile?.isFresher ? t('fresher') : t('yrs_exp', { exp: profile?.experience || 0 })}
                                 </Text>
                             </View>
                         </View>
@@ -391,6 +404,11 @@ export default function ProfileScreen() {
 
                 <View style={styles.actions}>
                     <Button
+                        title={t('change_password')}
+                        onPress={() => setShowPasswordModal(true)}
+                        style={[styles.helpButton, { backgroundColor: COLORS.warning }]}
+                    />
+                    <Button
                         title={t('logout')}
                         onPress={handleLogout}
                         style={styles.logoutButton}
@@ -413,6 +431,20 @@ export default function ProfileScreen() {
                 onSelect={handleLanguageChange}
                 currentLocale={locale}
                 t={t}
+            />
+
+            {/* Availability Modal */}
+            <AvailabilityModal
+                visible={showAvailabilityModal}
+                onClose={() => setShowAvailabilityModal(false)}
+                onSelect={handleAvailabilityChange}
+                currentAvailability={profile?.availability}
+                t={t}
+            />
+
+            <ChangePasswordModal
+                visible={showPasswordModal}
+                onClose={() => setShowPasswordModal(false)}
             />
         </View >
     );
@@ -684,6 +716,10 @@ const styles = StyleSheet.create({
     actions: {
         padding: 20,
         marginBottom: 20,
+    },
+    helpButton: {
+        backgroundColor: COLORS.info,
+        marginBottom: 12,
     },
     logoutButton: {
         backgroundColor: COLORS.danger,

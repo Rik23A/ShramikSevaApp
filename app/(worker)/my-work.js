@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
     View,
     Text,
@@ -38,6 +38,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import StartWorkModal from '../../components/worklog/StartWorkModal';
 import EndWorkModal from '../../components/worklog/EndWorkModal';
 import ApplicationStatusModal from '../../components/ApplicationStatusModal';
@@ -175,9 +176,8 @@ const JobCard = ({ job, index, type, workLogs, onStartWork, onEndWork, onViewDet
             return todayWorkLog.status; // 'assigned', 'in-progress', or 'completed'
         }
 
-        // If no work log for today, check if any work log exists for this job
-        const anyWorkLog = workLogs.find(log => log.job === job._id);
-        return anyWorkLog ? anyWorkLog.status : 'pending';
+        // If no work log exists strictly for today, return pending so they can start a new log
+        return 'pending';
     };
 
     const workerStatus = getWorkLogStatus();
@@ -229,16 +229,16 @@ const JobCard = ({ job, index, type, workLogs, onStartWork, onEndWork, onViewDet
 
                         {/* Job Details */}
                         <View style={styles.jobMeta}>
-                            <View style={styles.metaItem}>
+                            <View style={[styles.metaItem, { flex: 1, minWidth: '100%' }]}>
                                 <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
-                                <Text style={styles.metaText} numberOfLines={1}>
+                                <Text style={[styles.metaText, { flex: 1 }]}>
                                     {job.address || job.location?.address || t('location')}
                                 </Text>
                             </View>
                             <View style={styles.metaItem}>
                                 <Ionicons name="cash-outline" size={16} color={COLORS.success} />
                                 <Text style={[styles.metaText, styles.salaryText]}>
-                                    ₹{job.salary}/day
+                                    ₹{job.salary} {job.workType === 'temporary' ? t('per_day') : t('per_month')}
                                 </Text>
                             </View>
                         </View>
@@ -338,16 +338,16 @@ const RequestCard = ({ request, index, onAccept, onReject, loading, onViewDetail
 
                     {/* Job Details */}
                     <View style={styles.jobMeta}>
-                        <View style={styles.metaItem}>
+                        <View style={[styles.metaItem, { flex: 1, minWidth: '100%' }]}>
                             <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
-                            <Text style={styles.metaText} numberOfLines={1}>
+                            <Text style={[styles.metaText, { flex: 1 }]}>
                                 {request.job?.location?.address || t('location')}
                             </Text>
                         </View>
                         <View style={styles.metaItem}>
                             <Ionicons name="cash-outline" size={16} color={COLORS.success} />
                             <Text style={[styles.metaText, styles.salaryText]}>
-                                ₹{request.job?.salary}/day
+                                ₹{request.job?.salary} {request.job?.workType === 'temporary' ? t('per_day') : t('per_month')}
                             </Text>
                         </View>
                     </View>
@@ -438,7 +438,7 @@ const ApplicationCard = ({ application, index, onViewDetails }) => {
                             <View style={styles.appMetaItem}>
                                 <Ionicons name="cash-outline" size={14} color={COLORS.success} />
                                 <Text style={[styles.appMetaText, { color: COLORS.success }]}>
-                                    ₹{application.job.salary}/day
+                                    ₹{application.job.salary} {application.job.workType === 'temporary' ? t('per_day') : t('per_month')}
                                 </Text>
                             </View>
                         )}
@@ -508,7 +508,9 @@ const DailyHistoryCard = ({ log, index }) => {
                 {isCompleted && job?.salary && (
                     <View style={styles.dailyEarnings}>
                         <Text style={styles.dailyEarningsLabel}>{t('daily_earnings')}:</Text>
-                        <Text style={styles.dailyEarningsValue}>₹{job.salary}</Text>
+                        <Text style={styles.dailyEarningsValue}>
+                            ₹{job.salary} {job?.workType === 'temporary' ? t('per_day') : t('per_month')}
+                        </Text>
                     </View>
                 )}
             </View>
@@ -537,6 +539,7 @@ export default function MyWorkScreen() {
     const { tab } = useLocalSearchParams();
     const [activeTab, setActiveTab] = useState(tab || 'assigned');
     const { t } = useLanguage();
+    const { user } = useAuth();
 
     // Search state for History tab
     const [searchQuery, setSearchQuery] = useState('');
@@ -575,7 +578,7 @@ export default function MyWorkScreen() {
                 getAssignedJobs().catch(() => []),
                 getHiringRequests().catch(() => []),
                 getWorkerApplications().catch(() => []),
-                getCompletedJobs().catch(() => []),
+                getCompletedJobs(user?._id).catch(() => []),
                 getWorkerWorkLogs().catch(() => []),
             ]);
             setAssignedJobs(assigned || []);
@@ -589,11 +592,13 @@ export default function MyWorkScreen() {
             setLoading(false);
             setRefreshing(false);
         }
-    }, []);
+    }, [user?._id]);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    useFocusEffect(
+        useCallback(() => {
+            fetchData();
+        }, [fetchData])
+    );
 
     // ... existing handlers (handleAccept, handleReject, handleRefresh) ...
     const handleAccept = async (applicationId) => {

@@ -21,12 +21,12 @@ const DocumentUploadSection = ({ docTypes }) => {
     const [docType, setDocType] = useState('');
 
     const workerDefaults = [
-        { label: 'Biodata', value: 'biodata' },
-        { label: 'Aadhaar Card', value: 'adhaar_card' },
-        { label: 'Voter ID', value: 'voter_id' },
-        { label: 'Skill Certificate', value: 'skill_certificate' },
-        { label: 'Experience Certificate', value: 'experience_certificate' },
-        { label: 'Other', value: 'other' },
+        { label: t('doc_biodata'), value: 'biodata' },
+        { label: t('doc_aadhaar'), value: 'adhaar_card' },
+        { label: t('doc_voter_id'), value: 'voter_id' },
+        { label: t('doc_skill_cert'), value: 'skill_certificate' },
+        { label: t('doc_exp_cert'), value: 'experience_certificate' },
+        { label: t('doc_other'), value: 'other' },
     ];
 
     const documentTypes = docTypes || workerDefaults;
@@ -61,7 +61,7 @@ const DocumentUploadSection = ({ docTypes }) => {
 
             // Check file size (limit to 5MB)
             if (file.size > 5 * 1024 * 1024) {
-                Alert.alert('Error', 'File size must be less than 5MB');
+                Alert.alert(t('error'), t('file_size_limit'));
                 return;
             }
 
@@ -72,13 +72,13 @@ const DocumentUploadSection = ({ docTypes }) => {
             }
         } catch (error) {
             console.error('Error picking document:', error);
-            Alert.alert('Error', 'Failed to pick document');
+            Alert.alert(t('error'), t('failed_to_pick_doc'));
         }
     };
 
     const handleUpload = async () => {
         if (!selectedFile || !docName || !docType) {
-            Alert.alert('Error', 'Please fill all fields and select a file');
+            Alert.alert(t('error'), t('fill_all_fields'));
             return;
         }
 
@@ -99,7 +99,7 @@ const DocumentUploadSection = ({ docTypes }) => {
                 url: uploadResult.fileUrl,
             });
 
-            Alert.alert('Success', 'Document uploaded successfully');
+            Alert.alert(t('success'), t('doc_uploaded_success'));
 
             // Reset form
             setDocName('');
@@ -111,7 +111,7 @@ const DocumentUploadSection = ({ docTypes }) => {
             fetchDocuments();
         } catch (error) {
             console.error('Upload error:', error);
-            Alert.alert('Error', error.message || 'Failed to upload document. Please try again.');
+            Alert.alert(t('error'), error.message || t('failed_to_upload_doc'));
         } finally {
             setUploading(false);
         }
@@ -137,7 +137,7 @@ const DocumentUploadSection = ({ docTypes }) => {
                         doc.status === 'pending' && { color: COLORS.warning },
                         doc.status === 'rejected' && { color: COLORS.danger },
                     ]}>
-                        {doc.status ? doc.status.charAt(0).toUpperCase() + doc.status.slice(1) : 'Pending'}
+                        {doc.status ? t(doc.status) || (doc.status.charAt(0).toUpperCase() + doc.status.slice(1)) : t('pending')}
                     </Text>
                 </View>
             </View>
@@ -165,11 +165,11 @@ const DocumentUploadSection = ({ docTypes }) => {
                         if (supported) {
                             await Linking.openURL(encodedUrl);
                         } else {
-                            Alert.alert('Error', 'Cannot open this document');
+                            Alert.alert(t('error'), t('cannot_open_doc'));
                         }
                     } catch (error) {
                         console.error('Error opening document:', error);
-                        Alert.alert('Error', 'Failed to open document');
+                        Alert.alert(t('error'), t('failed_to_open_doc'));
                     }
                 }}
             >
@@ -181,26 +181,26 @@ const DocumentUploadSection = ({ docTypes }) => {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>{t('documents') || "Documents"}</Text>
+                <Text style={styles.title}>{t('documents')}</Text>
                 <TouchableOpacity
                     style={styles.addButton}
                     onPress={() => setShowUploadForm(!showUploadForm)}
                 >
                     <Ionicons name={showUploadForm ? "close" : "add"} size={20} color={COLORS.white} />
-                    <Text style={styles.addButtonText}>{showUploadForm ? "Cancel" : "Add New"}</Text>
+                    <Text style={styles.addButtonText}>{showUploadForm ? t('cancel') : t('add_new')}</Text>
                 </TouchableOpacity>
             </View>
 
             {showUploadForm && (
                 <View style={styles.uploadForm}>
                     <Input
-                        label="Document Name"
-                        placeholder="Enter document name e.g. Resume"
+                        label={t('doc_name')}
+                        placeholder={t('doc_name_placeholder')}
                         value={docName}
                         onChangeText={setDocName}
                     />
 
-                    <Text style={styles.formLabel}>Document Type</Text>
+                    <Text style={styles.formLabel}>{t('doc_type')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroll}>
                         {documentTypes.map((type) => (
                             <TouchableOpacity
@@ -221,14 +221,14 @@ const DocumentUploadSection = ({ docTypes }) => {
                         ))}
                     </ScrollView>
 
-                    <Text style={styles.formLabel}>File</Text>
+                    <Text style={styles.formLabel}>{t('file')}</Text>
                     <TouchableOpacity
                         style={styles.filePicker}
                         onPress={handlePickDocument}
                     >
                         <Ionicons name={selectedFile ? "document" : "cloud-upload-outline"} size={24} color={COLORS.textSecondary} />
                         <Text style={styles.filePickerText}>
-                            {selectedFile ? selectedFile.name : 'Select File (PDF, Image)'}
+                            {selectedFile ? selectedFile.name : t('select_file_placeholder')}
                         </Text>
                         {selectedFile && (
                             <TouchableOpacity onPress={() => setSelectedFile(null)}>
@@ -238,7 +238,7 @@ const DocumentUploadSection = ({ docTypes }) => {
                     </TouchableOpacity>
 
                     <Button
-                        title={uploading ? "Uploading..." : "Upload Document"}
+                        title={uploading ? t('uploading') : t('upload_doc')}
                         onPress={handleUpload}
                         loading={uploading}
                         disabled={uploading || !selectedFile || !docName || !docType}
@@ -251,7 +251,7 @@ const DocumentUploadSection = ({ docTypes }) => {
                 <LoadingSpinner />
             ) : documents.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No documents uploaded yet.</Text>
+                    <Text style={styles.emptyText}>{t('no_docs_uploaded')}</Text>
                 </View>
             ) : (
                 <View style={styles.listContainer}>

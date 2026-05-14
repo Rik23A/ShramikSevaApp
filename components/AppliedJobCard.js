@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/config';
 import { router } from 'expo-router';
+import { useLanguage } from '../context/LanguageContext';
 
 const AppliedJobCard = ({ application, onPress }) => {
+    const { t } = useLanguage();
     const { job, status } = application;
 
     if (!job) return null;
@@ -45,7 +47,7 @@ const AppliedJobCard = ({ application, onPress }) => {
                 <Text style={styles.title} numberOfLines={1}>{job.title}</Text>
                 <View style={[styles.statusBadge, { backgroundColor: getStatusBg(status) }]}>
                     <Text style={[styles.statusText, { color: getStatusColor(status) }]}>
-                        {status}
+                        {t(status) || status}
                     </Text>
                 </View>
             </View>
@@ -53,19 +55,19 @@ const AppliedJobCard = ({ application, onPress }) => {
             <View style={styles.companyRow}>
                 <Ionicons name="business-outline" size={14} color={COLORS.textSecondary} />
                 <Text style={styles.companyName} numberOfLines={1}>
-                    {job.employer?.companyName || job.employer?.name || "Company"}
+                    {job.employer?.companyName || job.employer?.name || t('company')}
                 </Text>
             </View>
 
             <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={14} color={COLORS.textSecondary} />
                 <Text style={styles.location} numberOfLines={1}>
-                    {job.location?.address ? job.location.address.split(',')[0].trim() : "Location TBA"}
+                    {job.location?.address ? job.location.address.split(',')[0].trim() : t('location_tba')}
                 </Text>
             </View>
 
             <View style={styles.footer}>
-                <Text style={styles.date}>Applied: {new Date(application.appliedDate).toLocaleDateString()}</Text>
+                <Text style={styles.date}>{t('applied')}: {new Date(application.appliedDate).toLocaleDateString()}</Text>
                 <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
             </View>
         </TouchableOpacity>

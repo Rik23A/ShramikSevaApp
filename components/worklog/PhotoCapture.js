@@ -17,12 +17,14 @@ import { COLORS } from '../../constants/config';
 import * as Haptics from 'expo-haptics';
 import { uploadFile } from '../../services/uploadService';
 import ViewShot from 'react-native-view-shot';
+import { useLanguage } from '../../context/LanguageContext';
 
 /**
  * Photo Capture Component
  * Handles camera permissions, photo capture, location capture, and upload
  */
 const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
+    const { t } = useLanguage();
     const [permission, requestPermission] = useCameraPermissions();
     const [locationPermission, setLocationPermission] = useState(null);
     const [capturedPhoto, setCapturedPhoto] = useState(null);
@@ -49,9 +51,9 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
 
             if (status !== 'granted') {
                 Alert.alert(
-                    'Location Permission Required',
-                    'Please enable location access to capture work photos.',
-                    [{ text: 'OK' }]
+                    t('location_permission_required'),
+                    t('location_permission_desc_capture'),
+                    [{ text: t('ok') }]
                 );
             }
         } catch (error) {
@@ -77,7 +79,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                 timestamp: loc.timestamp || Date.now(),
                 address: address[0] ?
                     `${address[0].street || ''}, ${address[0].city || ''}, ${address[0].region || ''}, ${address[0].postalCode || ''}`.trim() :
-                    'Unknown location',
+                    t('location_not_found'),
             };
         } catch (error) {
             console.error('Error getting location:', error);
@@ -94,9 +96,9 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
             const result = await requestPermission();
             if (!result.granted) {
                 Alert.alert(
-                    'Camera Permission Required',
-                    'Please enable camera access to capture work photos.',
-                    [{ text: 'OK' }]
+                    t('camera_permission_required'),
+                    t('camera_permission_desc_capture'),
+                    [{ text: t('ok') }]
                 );
                 return;
             }
@@ -129,7 +131,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
             setShowCamera(false);
         } catch (error) {
             console.error('Error taking photo:', error);
-            Alert.alert('Error', 'Failed to capture photo. Please try again.');
+            Alert.alert(t('error'), t('photo_capture_failed'));
         }
     };
 
@@ -142,7 +144,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
 
     const handleUpload = async () => {
         if (!capturedPhoto || !location) {
-            Alert.alert('Error', 'Please capture a photo first');
+            Alert.alert(t('error'), t('photo_selection_required'));
             return;
         }
 
@@ -175,7 +177,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
         } catch (error) {
             console.error('Error uploading photo:', error);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            Alert.alert('Upload Failed', error.message || 'Failed to upload photo. Please try again.');
+            Alert.alert(t('upload_failed'), error.message || t('photo_capture_failed'));
         } finally {
             setUploading(false);
         }
@@ -204,7 +206,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                                     <Ionicons name="close" size={28} color={COLORS.white} />
                                 </TouchableOpacity>
                                 <Text style={styles.cameraTitle}>
-                                    {type === 'start' ? 'Start Work Photo' : 'End Work Photo'}
+                                    {type === 'start' ? t('capture_photo_start') : t('capture_photo_end')}
                                 </Text>
                             </View>
 
@@ -235,7 +237,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
 
             {capturedPhoto ? (
                 <View style={styles.previewContainer}>
-                    <Text style={styles.previewTitle}>Photo Preview</Text>
+                    <Text style={styles.previewTitle}>{t('photo_preview')}</Text>
 
                     <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.8 }} style={{ marginBottom: 16 }}>
                         <View style={styles.imageContainer}>
@@ -269,7 +271,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                         <View style={styles.locationCard}>
                             <Ionicons name="location" size={20} color={COLORS.primary} />
                             <View style={styles.locationInfo}>
-                                <Text style={styles.locationLabel}>Captured at:</Text>
+                                <Text style={styles.locationLabel}>{t('captured_at')}</Text>
                                 <Text style={styles.locationText}>{location.address}</Text>
                                 <Text style={styles.coordinatesText}>
                                     {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
@@ -285,7 +287,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                             disabled={uploading}
                         >
                             <Ionicons name="camera-reverse" size={20} color={COLORS.textPrimary} />
-                            <Text style={styles.retakeButtonText}>Retake</Text>
+                            <Text style={styles.retakeButtonText}>{t('retake')}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -298,7 +300,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                             ) : (
                                 <>
                                     <Ionicons name="cloud-upload" size={20} color={COLORS.white} />
-                                    <Text style={styles.uploadButtonText}>Upload</Text>
+                                    <Text style={styles.uploadButtonText}>{t('upload')}</Text>
                                 </>
                             )}
                         </TouchableOpacity>
@@ -314,10 +316,10 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                         <Ionicons name="camera" size={48} color={COLORS.primary} />
                     </View>
                     <Text style={styles.captureTitle}>
-                        Capture {type === 'start' ? 'Start' : 'End'} Work Photo
+                        {type === 'start' ? t('capture_start_photo') : t('capture_end_photo')}
                     </Text>
                     <Text style={styles.captureSubtitle}>
-                        Photo will include your current location
+                        {t('photo_location_hint')}
                     </Text>
                 </TouchableOpacity>
             )}

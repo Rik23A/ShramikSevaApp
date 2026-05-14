@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Shramik Seva",
-    "slug": "ShramikSevaApp",
+    "slug": "ShramikSevaApp2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -16,15 +16,16 @@
       "package": "com.shramikseva.app",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
-        "backgroundColor": "#FF5722",
+        "backgroundColor": "#000080",
         "foregroundImage": "./assets/images/icon.png"
       },
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ],
-      "softwareKeyboardLayoutMode": "resize",
-      "windowSoftInputMode": "adjustResize"
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "output": "static",
@@ -51,12 +52,19 @@
           "image": "./assets/images/icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#FF5722"
+          "backgroundColor": "#ADD8E6"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a69949a3-85d5-44de-8a8c-a251468031e7"
+      }
     }
   }
 }

@@ -9,20 +9,22 @@ import {
     RefreshControl,
     Linking,
     Platform,
+    Image,
+    ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
 import { COLORS } from '../../constants/config';
 import { getJobById, applyToJob } from '../../services/jobService';
+import { createConversation } from '../../services/messageService';
 import { calculateRoute } from '../../services/geolocationService';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Button from '../../components/ui/Button';
 import WorkLogHistoryModal from '../../components/worklog/WorkLogHistoryModal';
+import ResumeUploadModal from '../../components/ResumeUploadModal';
 
 export default function JobDetailScreen() {
     const { id } = useLocalSearchParams();
@@ -31,12 +33,17 @@ export default function JobDetailScreen() {
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
     const [applying, setApplying] = useState(false);
+    const [startingChat, setStartingChat] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [showWorkHistory, setShowWorkHistory] = useState(false);
-    const [currentLocation, setCurrentLocation] = useState(null);
-    const [locationPermission, setLocationPermission] = useState(null);
-    const [routeCoordinates, setRouteCoordinates] = useState([]);
-    const mapRef = React.useRef(null);
+    const [showCVModal, setShowCVModal] = useState(false);
+    const [mapLoading, setMapLoading] = useState(true);
+
+    const getStaticMapUrl = (lng, lat) => {
+        // Using staticmaps.cloud.osm.be which is an OSM-based static map service
+        // Format: https://staticmaps.cloud.osm.be/staticmap?center={lat},{lng}&zoom=15&size=600x300&maptype=mapnik&markers={lat},{lng},red-pushpin
+        return `https://staticmaps.cloud.osm.be/staticmap?center=${lat},${lng}&zoom=15&size=600x300&maptype=mapnik&markers=${lat},${lng},red-pushpin`;
+    };
 
     const fetchJob = async () => {
         try {
@@ -44,28 +51,16 @@ export default function JobDetailScreen() {
             setJob(data);
         } catch (error) {
             console.error('Failed to fetch job:', error);
-            Alert.alert('Error', 'Failed to load job details');
+            Alert.alert(t('error_title'), t('failed_to_load_job_details'));
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     };
 
-    const getLocation = async () => {
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        setLocationPermission(status);
-        if (status !== 'granted') {
-            Alert.alert('Permission to access location was denied');
-            return;
-        }
-
-        let location = await Location.getCurrentPositionAsync({});
-        setCurrentLocation(location.coords);
-    };
-
     const isAssigned = job?.workers?.some(w => {
-        const id = w.workerId?._id || w.workerId;
-        return id?.toString() === user?._id?.toString() && ['hired', 'in-progress', 'completed'].includes(w.status);
+        const id = w?.workerId?._id || w?.workerId;
+        return id?.toString() === user?._id?.toString() && ['hired', 'in-progress', 'completed'].includes(w?.status);
     });
 
     useEffect(() => {
@@ -74,81 +69,69 @@ export default function JobDetailScreen() {
         }
     }, [id]);
 
-    useEffect(() => {
-        if (isAssigned) {
-            getLocation();
-        }
-    }, [isAssigned]);
-
-    useEffect(() => {
-        const fetchRoute = async () => {
-            if (currentLocation && job?.location?.coordinates) {
-                try {
-                    const origin = {
-                        latitude: currentLocation.latitude,
-                        longitude: currentLocation.longitude
-                    };
-                    const destination = {
-                        latitude: job.location.coordinates[1],
-                        longitude: job.location.coordinates[0]
-                    };
-                    const route = await calculateRoute(origin, destination);
-                    if (route && route.length > 0) {
-                        setRouteCoordinates(route);
-
-                        // Fit map to show the whole route
-                        if (mapRef.current) {
-                            mapRef.current.fitToCoordinates([origin, destination], {
-                                edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-                                animated: true,
-                            });
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch route:', error);
-                    // Fallback to straight line if API fails
-                    setRouteCoordinates([
-                        { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
-                        { latitude: job.location.coordinates[1], longitude: job.location.coordinates[0] }
-                    ]);
-                }
-            }
-        };
-
-        fetchRoute();
-    }, [currentLocation, job?.location?.coordinates]);
-
     const onRefresh = () => {
         setRefreshing(true);
         fetchJob();
-        if (isAssigned) {
-            getLocation();
-        }
     };
 
     const handleApply = async () => {
+        if (!user) {
+            router.push('/auth/login');
+            return;
+        }
+
+        if (user.role === 'worker') {
+            setShowCVModal(true);
+            return;
+        }
+
+        // For non-workers if status badge shows apply
+        performApply();
+    };
+
+    const performApply = async (cvId) => {
         try {
             setApplying(true);
-            await applyToJob(id);
+            await applyToJob(id, cvId);
             Alert.alert(t('success'), t('success_apply'));
             fetchJob();
         } catch (error) {
             console.error('Failed to apply:', error);
-            Alert.alert(t('error_title'), error.response?.data?.message || 'Failed to apply');
+            Alert.alert(t('error_title'), error.response?.data?.message || t('failed_to_apply'));
         } finally {
             setApplying(false);
+            setShowCVModal(false);
+        }
+    };
+
+    const handleContactEmployer = async () => {
+        if (!user) {
+            router.push('/auth/login');
+            return;
+        }
+
+        try {
+            setStartingChat(true);
+            const employerId = job.employer?._id || job.employer;
+            const conversation = await createConversation(user._id, employerId);
+            router.push(`/chat/${conversation._id}`);
+        } catch (error) {
+            console.error('Failed to start chat:', error);
+            Alert.alert(t('error_title') || 'Error', t('failed_to_start_chat') || 'Failed to start conversation');
+        } finally {
+            setStartingChat(false);
         }
     };
 
     const handleGetDirections = () => {
         if (!job?.location?.coordinates) {
-            Alert.alert('Error', 'Job location not available');
+            Alert.alert(t('error_title'), t('location_not_available'));
             return;
         }
         const [lng, lat] = job.location.coordinates;
         const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
         const latLng = `${lat},${lng}`;
-        const label = job.title || 'Job Location';
+        const label = job.title || t('job_location');
         const url = Platform.select({
             ios: `${scheme}${label}@${latLng}`,
             android: `${scheme}${latLng}(${label})`
@@ -215,14 +198,23 @@ export default function JobDetailScreen() {
                 {/* Header Background */}
                 <View style={styles.headerBackground}>
                     <View style={[styles.headerContent, { marginBottom: 20 }]}>
-                        <Text style={styles.title}>{job.title}</Text>
-                        <View style={[
-                            styles.statusBadge,
-                            job.status === 'open' && styles.statusOpen,
-                            job.status === 'closed' && styles.statusClosed,
-                            job.status === 'in-progress' && styles.statusProgress,
-                        ]}>
-                            <Text style={styles.statusText}>{job.status}</Text>
+                        <View style={{ flex: 1, marginRight: 10 }}>
+                            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                                <View style={[styles.statusBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                                    <Text style={styles.statusText}>{job.workType}</Text>
+                                </View>
+                                {Array.isArray(job.workerType) && job.workerType.length > 0 && (
+                                    <View style={[styles.statusBadge, { backgroundColor: 'rgba(33, 150, 243, 0.2)' }]}>
+                                        <Text style={[styles.statusText, { color: '#E3F2FD' }]}>{job.workerType.join(', ')}</Text>
+                                    </View>
+                                )}
+                                {job.isUrgent && (
+                                    <View style={[styles.statusBadge, { backgroundColor: 'rgba(244, 67, 54, 0.3)' }]}>
+                                        <Text style={[styles.statusText, { color: '#FFEBEE' }]}>{t('urgent_badge')}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            <Text style={styles.title}>{job.title}</Text>
                         </View>
                     </View>
                 </View>
@@ -235,10 +227,10 @@ export default function JobDetailScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.companyName}>
-                                {job.employer?.companyName || job.employer?.name || 'Company'}
+                                {job.employer?.companyName || job.employer?.name || t('company')}
                             </Text>
                             <Text style={styles.companyType}>
-                                {job.employer?.businessType || 'Employer'}
+                                {job.employer?.businessType || t('employer')} • {job.employer?.rating || t('new')} ⭐
                             </Text>
                         </View>
                     </View>
@@ -248,7 +240,9 @@ export default function JobDetailScreen() {
                     <View style={styles.keyStatsRow}>
                         <View style={styles.keyStatItem}>
                             <Ionicons name="cash-outline" size={18} color={COLORS.success} />
-                            <Text style={styles.keyStatText} numberOfLines={1}>₹{job.salary}/day</Text>
+                            <Text style={styles.keyStatText} numberOfLines={1}>
+                                ₹{job.salary} {job.workType === 'temporary' ? t('per_day') : t('per_month')}
+                            </Text>
                         </View>
                         <View style={styles.verticalDivider} />
                         <View style={styles.keyStatItem}>
@@ -259,9 +253,9 @@ export default function JobDetailScreen() {
                         </View>
                         <View style={styles.verticalDivider} />
                         <View style={styles.keyStatItem}>
-                            <Ionicons name="time-outline" size={18} color={COLORS.warning} />
+                            <Ionicons name="school-outline" size={18} color={COLORS.warning} />
                             <Text style={styles.keyStatText} numberOfLines={1}>
-                                {job.workType === 'permanent' ? t('full_time') : t('contract')}
+                                {job.minExperience === 0 && job.maxExperience === 0 ? t('fresher') : `${job.minExperience}-${job.maxExperience} Yrs`}
                             </Text>
                         </View>
                     </View>
@@ -275,31 +269,31 @@ export default function JobDetailScreen() {
                 <View style={styles.gridContainer}>
                     <View style={styles.gridItem}>
                         <View style={[styles.gridIcon, { backgroundColor: '#E3F2FD' }]}>
-                            <Ionicons name="briefcase-outline" size={20} color={COLORS.primary} />
+                            <Ionicons name="people-outline" size={20} color={COLORS.primary} />
                         </View>
-                        <Text style={styles.gridLabel}>{t('role')}</Text>
-                        <Text style={styles.gridValue}>{job.category || 'General'}</Text>
+                        <Text style={styles.gridLabel}>{t('worker_type')}</Text>
+                        <Text style={styles.gridValue}>{Array.isArray(job.workerType) ? job.workerType.join(', ') : (job.workerType || t('general'))}</Text>
                     </View>
                     <View style={styles.gridItem}>
                         <View style={[styles.gridIcon, { backgroundColor: '#E8F5E9' }]}>
-                            <Ionicons name="people-outline" size={20} color={COLORS.success} />
+                            <Ionicons name="briefcase-outline" size={20} color={COLORS.success} />
                         </View>
                         <Text style={styles.gridLabel}>{t('openings')}</Text>
-                        <Text style={styles.gridValue}>{job.totalOpenings} {t('vacancies')}</Text>
+                        <Text style={styles.gridValue}>{job.totalOpenings || 1}</Text>
                     </View>
                     <View style={styles.gridItem}>
                         <View style={[styles.gridIcon, { backgroundColor: '#FFF3E0' }]}>
                             <Ionicons name="calendar-outline" size={20} color={COLORS.warning} />
                         </View>
                         <Text style={styles.gridLabel}>{t('duration')}</Text>
-                        <Text style={styles.gridValue}>{job.durationDays || 'N/A'} {t('days')}</Text>
+                        <Text style={styles.gridValue}>{job.workType === 'permanent' ? t('permanent') : (job.durationDays ? `${job.durationDays} ${t('days')}` : 'N/A')}</Text>
                     </View>
                     <View style={styles.gridItem}>
                         <View style={[styles.gridIcon, { backgroundColor: '#F3E5F5' }]}>
-                            <Ionicons name="transgender-outline" size={20} color="#9C27B0" />
+                            <Ionicons name="document-text-outline" size={20} color="#9C27B0" />
                         </View>
-                        <Text style={styles.gridLabel}>{t('gender')}</Text>
-                        <Text style={styles.gridValue}>{job.gender || t('any')}</Text>
+                        <Text style={styles.gridLabel}>{t('applicants')}</Text>
+                        <Text style={styles.gridValue}>{job.applicants?.length || 0}</Text>
                     </View>
                 </View>
 
@@ -311,20 +305,14 @@ export default function JobDetailScreen() {
                     </View>
                 )}
 
-                {/* Requirements */}
-                {job.requirements && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>{t('requirements')}</Text>
-                        <Text style={styles.description}>{job.requirements}</Text>
-                    </View>
-                )}
+
 
                 {/* Skills */}
                 {job.skills && job.skills.length > 0 && (
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>{t('required_skills')}</Text>
                         <View style={styles.skillsContainer}>
-                            {job.skills.map((skill, index) => (
+                            {Array.isArray(job.skills) && job.skills.map((skill, index) => (
                                 <View key={index} style={styles.skillBadge}>
                                     <Text style={styles.skillText}>{skill}</Text>
                                 </View>
@@ -333,71 +321,52 @@ export default function JobDetailScreen() {
                     </View>
                 )}
 
-                {/* Map Section for Assigned Workers */}
-                {isAssigned && job.location?.coordinates && (
+                {/* Location Card (Replacement for Inline Map) */}
+                {job.location && (
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>{t('location_map')}</Text>
-                        <View style={styles.mapContainer}>
-                            <MapView
-                                ref={mapRef}
-                                provider={PROVIDER_GOOGLE}
-                                style={styles.map}
-                                initialRegion={{
-                                    latitude: job.location.coordinates[1],
-                                    longitude: job.location.coordinates[0],
-                                    latitudeDelta: 0.05,
-                                    longitudeDelta: 0.05,
-                                }}
-                            >
-                                <Marker
-                                    coordinate={{
-                                        latitude: job.location.coordinates[1],
-                                        longitude: job.location.coordinates[0],
-                                    }}
-                                    title={job.title}
-                                    description={job.location.address}
-                                    anchor={{ x: 0.5, y: 1 }} // Anchor at bottom center (tip of the pin)
-                                >
-                                    <View style={styles.markerContainer}>
-                                        <View style={styles.jobMarkerPin}>
-                                            <Ionicons name="briefcase" size={18} color={COLORS.white} />
-                                        </View>
-                                        <View style={styles.markerTip} />
-                                    </View>
-                                </Marker>
-
-                                {currentLocation && (
-                                    <Marker
-                                        coordinate={{
-                                            latitude: currentLocation.latitude,
-                                            longitude: currentLocation.longitude,
-                                        }}
-                                        title={t('you_are_here')}
-                                        anchor={{ x: 0.5, y: 0.5 }} // Center anchor for user dot
-                                    >
-                                        <View style={styles.userMarkerContainer}>
-                                            <View style={styles.userMarkerPulse} />
-                                            <View style={styles.userMarkerDot}>
-                                                <Ionicons name="person" size={14} color={COLORS.white} />
-                                            </View>
-                                        </View>
-                                    </Marker>
-                                )}
-
-                                {routeCoordinates && routeCoordinates.length > 0 && (
-                                    <Polyline
-                                        coordinates={routeCoordinates}
-                                        strokeColor={COLORS.primary}
-                                        strokeWidth={4}
+                        <Text style={styles.sectionTitle}>{t('location')}</Text>
+                        <View style={styles.locationCard}>
+                            {job.location?.coordinates?.length === 2 && (
+                                <View style={styles.staticMapContainer}>
+                                    <Image
+                                        source={{ uri: getStaticMapUrl(job.location.coordinates[0], job.location.coordinates[1]) }}
+                                        style={styles.staticMapImage}
+                                        onLoadStart={() => setMapLoading(true)}
+                                        onLoadEnd={() => setMapLoading(false)}
                                     />
-                                )}
-                            </MapView>
-                            {/* Overlay to intercept gestures if needed, or put buttons over map */}
-                            <TouchableOpacity
-                                style={styles.mapOverlayBtn}
+                                    {mapLoading && (
+                                        <View style={styles.mapLoader}>
+                                            <ActivityIndicator color={COLORS.primary} />
+                                        </View>
+                                    )}
+                                    <View style={styles.mapMarkerOverlay}>
+                                        <Ionicons name="location" size={32} color={COLORS.danger} />
+                                    </View>
+                                </View>
+                            )}
+                            
+                            <View style={styles.locationInfoMain}>
+                                <View style={styles.locationIconBg}>
+                                    <Ionicons name="map" size={24} color={COLORS.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.locationAddressMain}>
+                                        {job.location?.address || t('location')}
+                                    </Text>
+                                    {job.location?.coordinates && (
+                                        <Text style={styles.locationCoords}>
+                                            {job.location.coordinates[1].toFixed(5)}, {job.location.coordinates[0].toFixed(5)}
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                            
+                            <TouchableOpacity 
+                                style={styles.mapActionBtn}
                                 onPress={handleGetDirections}
                             >
-                                <Ionicons name="navigate" size={20} color={COLORS.white} />
+                                <Ionicons name="navigate-circle" size={24} color={COLORS.white} />
+                                <Text style={styles.mapActionBtnText}>{t('view_on_maps')}</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -456,8 +425,25 @@ export default function JobDetailScreen() {
                             <Text style={styles.disabledText}>{t('applications_closed')}</Text>
                         </View>
                     )}
+
+                    {!isEmployer && !isMyJob && user?.role === 'worker' && (
+                        <Button
+                            title={t('contact_employer')}
+                            onPress={handleContactEmployer}
+                            loading={startingChat}
+                            style={[styles.primaryButton, { marginTop: 12, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }]}
+                            textStyle={{ color: COLORS.text }}
+                            icon={<Ionicons name="chatbubble-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />}
+                        />
+                    )}
                 </View>
             </ScrollView>
+            <ResumeUploadModal
+                visible={showCVModal}
+                onClose={() => setShowCVModal(false)}
+                onUploadSuccess={(cvId) => performApply(cvId)}
+                onSkip={() => performApply()}
+            />
         </View>
     );
 }
@@ -701,90 +687,78 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 15,
     },
-    mapContainer: {
-        height: 250,
-        borderRadius: 16,
-        overflow: 'hidden',
+    locationCard: {
+        backgroundColor: COLORS.card,
+        borderRadius: 20,
+        overflow: 'hidden', // Contain the map image
         borderWidth: 1,
         borderColor: COLORS.border,
-        position: 'relative',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
     },
-    map: {
+    staticMapContainer: {
+        height: 160,
+        width: '100%',
+        backgroundColor: '#E0E0E0',
+        position: 'relative',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    staticMapImage: {
         width: '100%',
         height: '100%',
     },
-    markerContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    jobMarkerPin: {
-        backgroundColor: COLORS.danger,
-        width: 38,
-        height: 38,
-        borderRadius: 19,
-        borderWidth: 3,
-        borderColor: COLORS.white,
-        alignItems: 'center',
-        justifyContent: 'center',
-        elevation: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    markerTip: {
-        width: 0,
-        height: 0,
-        backgroundColor: 'transparent',
-        borderStyle: 'solid',
-        borderLeftWidth: 7,
-        borderRightWidth: 7,
-        borderTopWidth: 10,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderTopColor: COLORS.white,
-        marginTop: -2, // Slight overlap
-    },
-    userMarkerContainer: {
-        width: 40,
-        height: 40,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    userMarkerPulse: {
+    mapLoader: {
         position: 'absolute',
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: COLORS.primary,
-        opacity: 0.2,
+        zIndex: 1,
     },
-    userMarkerDot: {
-        width: 24,
-        height: 24,
+    mapMarkerOverlay: {
+        position: 'absolute',
+        zIndex: 2,
+        top: '40%', // Adjust to center visually on the static map center
+    },
+    locationInfoMain: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+    },
+    locationIconBg: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: COLORS.primary + '10',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    locationAddressMain: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text,
+        lineHeight: 20,
+    },
+    locationCoords: {
+        fontSize: 11,
+        color: COLORS.textSecondary,
+        marginTop: 2,
+    },
+    mapActionBtn: {
+        backgroundColor: COLORS.primary,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        margin: 16,
+        marginTop: 0,
         borderRadius: 12,
-        backgroundColor: COLORS.primary,
-        borderWidth: 2,
-        borderColor: COLORS.white,
-        alignItems: 'center',
-        justifyContent: 'center',
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
+        gap: 10,
     },
-    mapOverlayBtn: {
-        position: 'absolute',
-        bottom: 16,
-        right: 16,
-        backgroundColor: COLORS.primary,
-        padding: 12,
-        borderRadius: 30,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
+    mapActionBtnText: {
+        color: COLORS.white,
+        fontSize: 15,
+        fontWeight: '700',
     }
 });

@@ -6,15 +6,19 @@ import {
     TouchableOpacity,
     Animated,
     Dimensions,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 
 const { width } = Dimensions.get('window');
 
 export default function SelectRoleScreen() {
+    const { t } = useLanguage();
     // Animation constants
     const cardScale1 = useRef(new Animated.Value(0.9)).current;
     const cardScale2 = useRef(new Animated.Value(0.9)).current;
@@ -65,7 +69,11 @@ export default function SelectRoleScreen() {
                 activeOpacity={0.9}
             >
                 <View style={[styles.iconContainer, { backgroundColor: color }]}>
-                    <Ionicons name={icon} size={32} color={COLORS.white} />
+                    {icon === 'shramik-logo' ? (
+                        <Image source={require('../../assets/images/icon.png')} style={{ width: 44, height: 44 }} resizeMode="contain" />
+                    ) : (
+                        <Ionicons name={icon} size={32} color={COLORS.white} />
+                    )}
                 </View>
                 <View style={styles.roleInfo}>
                     <Text style={styles.roleTitle}>{title}</Text>
@@ -80,19 +88,20 @@ export default function SelectRoleScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
+            <StatusBar style="dark" />
             <View style={styles.content}>
                 <View style={styles.headerContainer}>
-                    <Text style={styles.title}>Who are you?</Text>
-                    <Text style={styles.subtitle}>Select your account type to continue</Text>
+                    <Text style={styles.title}>{t('who_are_you')}</Text>
+                    <Text style={styles.subtitle}>{t('select_account_type')}</Text>
                 </View>
 
                 <RoleCard
                     scale={cardScale1}
                     opacity={cardOpacity1}
                     role="worker"
-                    title="I'm a Worker"
-                    description="Looking for jobs as Security Guard, Welder, Plumber, etc."
-                    icon="construct"
+                    title={t('role_worker_title')}
+                    description={t('role_worker_desc')}
+                    icon="shramik-logo"
                     color={COLORS.primary}
                     onPress={() => handleSelectRole('worker')}
                     style={styles.cardContainer}
@@ -102,8 +111,8 @@ export default function SelectRoleScreen() {
                     scale={cardScale2}
                     opacity={cardOpacity2}
                     role="employer"
-                    title="I'm an Employer"
-                    description="Looking to hire skilled workers for my business or projects"
+                    title={t('role_employer_title')}
+                    description={t('role_employer_desc')}
                     icon="business"
                     color={COLORS.secondary}
                     onPress={() => handleSelectRole('employer')}
@@ -115,7 +124,7 @@ export default function SelectRoleScreen() {
                     onPress={() => router.push('/auth/login')}
                 >
                     <Text style={styles.loginText}>
-                        Already have an account? <Text style={styles.loginTextBold}>Login</Text>
+                        {t('already_have_account')} <Text style={styles.loginTextBold}>{t('login')}</Text>
                     </Text>
                 </TouchableOpacity>
             </View>

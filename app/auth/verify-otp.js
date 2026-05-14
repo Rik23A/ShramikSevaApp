@@ -10,6 +10,7 @@ import {
     ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../../components/ui/Button';
@@ -17,14 +18,22 @@ import OtpInput from '../../components/OtpInput';
 import { COLORS } from '../../constants/config';
 import { verifyOtp, completeRegistration, requestOtp } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function VerifyOtpScreen() {
+    const { t } = useLanguage();
     const { mobile, isLogin } = useLocalSearchParams();
     const { login } = useAuth();
     const [otp, setOtp] = useState('');
     const [loading, setLoading] = useState(false);
-    const [resendTimer, setResendTimer] = useState(30);
+    const [resendTimer, setResendTimer] = useState(300);
     const [canResend, setCanResend] = useState(false);
+
+    const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
 
     useEffect(() => {
         let interval;
@@ -40,7 +49,7 @@ export default function VerifyOtpScreen() {
 
     const handleVerifyOtp = async () => {
         if (otp.length !== 6) {
-            Alert.alert('Error', 'Please enter the complete 6-digit OTP');
+            Alert.alert(t('error_title'), t('valid_otp_error') || 'Please enter valid 6-digit OTP');
             return;
         }
 
@@ -68,8 +77,8 @@ export default function VerifyOtpScreen() {
             }
         } catch (err) {
             Alert.alert(
-                'Verification Failed',
-                err.response?.data?.message || 'Invalid OTP. Please try again.'
+                t('verification_failed') || 'Verification Failed',
+                err.response?.data?.message || t('valid_otp_error') || 'Invalid OTP. Please try again.'
             );
         } finally {
             setLoading(false);
@@ -81,16 +90,17 @@ export default function VerifyOtpScreen() {
 
         try {
             await requestOtp(mobile);
-            setResendTimer(30);
+            setResendTimer(300);
             setCanResend(false);
-            Alert.alert('Success', 'OTP sent successfully!');
+            Alert.alert(t('success'), t('otp_sent_success') || 'OTP sent successfully!');
         } catch (err) {
-            Alert.alert('Error', 'Failed to resend OTP. Please try again.');
+            Alert.alert(t('error_title'), t('otp_send_fail'));
         }
     };
 
     return (
         <SafeAreaView style={styles.container}>
+            <StatusBar style="dark" />
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1 }}
@@ -112,9 +122,9 @@ export default function VerifyOtpScreen() {
                             <View style={styles.iconContainer}>
                                 <Ionicons name="mail-open" size={50} color={COLORS.primary} />
                             </View>
-                            <Text style={styles.title}>Verify OTP</Text>
+                            <Text style={styles.title}>{t('verify_otp')}</Text>
                             <Text style={styles.subtitle}>
-                                Enter the 6-digit code sent to{'\n'}
+                                {t('enter_otp_sent_to')}{'\n'}
                                 <Text style={styles.mobileText}>+91 {mobile}</Text>
                             </Text>
                         </View>
@@ -126,17 +136,17 @@ export default function VerifyOtpScreen() {
                         <View style={styles.resendContainer}>
                             {canResend ? (
                                 <TouchableOpacity onPress={handleResendOtp}>
-                                    <Text style={styles.resendButton}>Resend OTP</Text>
+                                    <Text style={styles.resendButton}>{t('resend_otp')}</Text>
                                 </TouchableOpacity>
                             ) : (
                                 <Text style={styles.resendTimer}>
-                                    Resend OTP in <Text style={styles.timerText}>{resendTimer}s</Text>
+                                    {t('resend_otp_in')} <Text style={styles.timerText}>{formatTime(resendTimer)}</Text>
                                 </Text>
                             )}
                         </View>
 
                         <Button
-                            title="Verify & Continue"
+                            title={t('verify_continue')}
                             onPress={handleVerifyOtp}
                             loading={loading}
                             disabled={otp.length !== 6 || loading}
@@ -144,7 +154,7 @@ export default function VerifyOtpScreen() {
                         />
 
                         <Text style={styles.hint}>
-                            💡 In development mode, check the backend console for the OTP
+                            {t('dev_otp_hint')}
                         </Text>
                     </View>
                 </ScrollView>

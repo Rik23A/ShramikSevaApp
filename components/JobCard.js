@@ -3,11 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated } from '
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, WORKER_TYPES } from '../constants/config';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useLanguage } from '../context/LanguageContext';
 
 const { width } = Dimensions.get('window');
 const isSmallScreen = width < 360;
 
-const JobCard = ({ job, onPress, isRecommended }) => {
+const JobCard = ({ job, onPress, isRecommended, noMargin }) => {
+    const { t } = useLanguage();
     const scaleAnim = useRef(new Animated.Value(1)).current;
 
     const formatSalary = (salary) => {
@@ -20,9 +22,9 @@ const JobCard = ({ job, onPress, isRecommended }) => {
         const diffTime = now - date;
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-        if (diffDays === 0) return 'Today';
-        if (diffDays === 1) return 'Yesterday';
-        if (diffDays < 7) return `${diffDays} days ago`;
+        if (diffDays === 0) return t('today');
+        if (diffDays === 1) return t('yesterday');
+        if (diffDays < 7) return t('days_ago', { days: diffDays });
         return date.toLocaleDateString('en-IN');
     };
 
@@ -44,7 +46,7 @@ const JobCard = ({ job, onPress, isRecommended }) => {
     return (
         <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
             <TouchableOpacity
-                style={[styles.card, isRecommended && styles.recommendedCard]}
+                style={[styles.card, isRecommended && styles.recommendedCard, noMargin && { marginHorizontal: 0 }]}
                 onPress={onPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
@@ -58,7 +60,7 @@ const JobCard = ({ job, onPress, isRecommended }) => {
                         style={styles.recommendedBadge}
                     >
                         <Ionicons name="sparkles" size={12} color="#FFF" />
-                        <Text style={styles.recommendedText}>Recommended</Text>
+                        <Text style={styles.recommendedText}>{t('recommended')}</Text>
                     </LinearGradient>
                 )}
 
@@ -101,7 +103,9 @@ const JobCard = ({ job, onPress, isRecommended }) => {
                     <View style={styles.salaryBadge}>
                         <Ionicons name="cash" size={18} color={COLORS.success} />
                         <Text style={styles.salaryAmount}>{formatSalary(job.salary)}</Text>
-                        <Text style={styles.salaryPeriod}>/ day</Text>
+                        <Text style={styles.salaryPeriod}>
+                            {job.workType === 'temporary' ? t('per_day') : t('per_month')}
+                        </Text>
                     </View>
                 </View>
 
@@ -110,7 +114,7 @@ const JobCard = ({ job, onPress, isRecommended }) => {
                     <View style={styles.infoItem}>
                         <Ionicons name="location" size={14} color={COLORS.primary} />
                         <Text style={styles.infoText} numberOfLines={1}>
-                            {job.location?.address ? job.location.address.split(',')[0].trim() : 'Remote'}
+                            {job.location?.address ? job.location.address.split(',')[0].trim() : t('location_tba')}
                         </Text>
                     </View>
 
@@ -118,20 +122,20 @@ const JobCard = ({ job, onPress, isRecommended }) => {
                     <View style={styles.infoItem}>
                         <Ionicons name="briefcase" size={14} color={COLORS.primary} />
                         <Text style={styles.infoText}>
-                            {job.minExperience === 0 && job.maxExperience === 0 ? 'Fresher' : `${job.minExperience}-${job.maxExperience} Yrs`}
+                            {job.minExperience === 0 && job.maxExperience === 0 ? t('fresher') : t('yrs_exp', { exp: `${job.minExperience}-${job.maxExperience}` })}
                         </Text>
                     </View>
 
                     {/* Openings */}
                     <View style={styles.infoItem}>
                         <Ionicons name="people" size={14} color={COLORS.primary} />
-                        <Text style={styles.infoText}>{job.totalOpenings || 1} Openings</Text>
+                        <Text style={styles.infoText}>{t('openings_count', { count: job.totalOpenings || 1 })}</Text>
                     </View>
 
                     {/* Applicants */}
                     <View style={styles.infoItem}>
                         <Ionicons name="person" size={14} color={COLORS.primary} />
-                        <Text style={styles.infoText}>{job.applicants?.length || 0} Applied</Text>
+                        <Text style={styles.infoText}>{t('applicants_count', { count: job.applicants?.length || 0 })}</Text>
                     </View>
                 </View>
 
@@ -140,13 +144,13 @@ const JobCard = ({ job, onPress, isRecommended }) => {
                         <View style={[styles.typeBadge,
                         job.workType === 'permanent' && styles.permanentBadge
                         ]}>
-                            <Text style={styles.typeText}>{job.workType}</Text>
+                            <Text style={styles.typeText}>{t(job.workType)}</Text>
                         </View>
                         <Text style={styles.date}>{formatDate(job.createdAt)}</Text>
                     </View>
 
                     <TouchableOpacity style={styles.viewButton} onPress={onPress}>
-                        <Text style={styles.viewButtonText}>View</Text>
+                        <Text style={styles.viewButtonText}>{t('view')}</Text>
                         <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
                     </TouchableOpacity>
                 </View>
@@ -161,6 +165,7 @@ const styles = StyleSheet.create({
         borderRadius: isSmallScreen ? 14 : 16,
         padding: isSmallScreen ? 14 : 16,
         marginBottom: 12,
+        marginHorizontal: 16,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,

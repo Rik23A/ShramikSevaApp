@@ -18,9 +18,11 @@ import { COLORS } from '../../../constants/config';
 import { getJobById, hireWorker, rejectApplicant, getApplicationsForJob } from '../../../services/jobService';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import { getFullImageUrl } from '../../../utils/imageUtil';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function JobApplicantsScreen() {
     const { id } = useLocalSearchParams();
+    const { t } = useLanguage();
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -42,7 +44,7 @@ export default function JobApplicantsScreen() {
             setApplications(appsData);
         } catch (error) {
             console.error('Failed to fetch job:', error);
-            Alert.alert('Error', 'Failed to load job details');
+            Alert.alert(t('error_title'), t('failed_to_load_job_details'));
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -51,20 +53,20 @@ export default function JobApplicantsScreen() {
 
     const handleHire = async (workerId, workerName) => {
         Alert.alert(
-            'Confirm Hire',
-            `Are you sure you want to hire ${workerName} for this job?`,
+            t('confirm_hire'),
+            t('confirm_hire_msg', { name: workerName }),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Hire',
+                    text: t('hire'),
                     onPress: async () => {
                         try {
                             setActionLoading(workerId);
                             await hireWorker(id, workerId);
-                            Alert.alert('Success', `${workerName} has been hired!`);
+                            Alert.alert(t('success'), t('hire_success_msg', { name: workerName }));
                             fetchJobDetails();
                         } catch (error) {
-                            Alert.alert('Error', error.response?.data?.message || 'Failed to hire worker');
+                            Alert.alert(t('error_title'), error.response?.data?.message || t('failed_to_hire_worker'));
                         } finally {
                             setActionLoading(null);
                         }
@@ -76,12 +78,12 @@ export default function JobApplicantsScreen() {
 
     const handleReject = async (applicantId, workerName) => {
         Alert.alert(
-            'Confirm Rejection',
-            `Are you sure you want to reject ${workerName}'s application?`,
+            t('confirm_rejection'),
+            t('confirm_rejection_msg', { name: workerName }),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Reject',
+                    text: t('reject'),
                     style: 'destructive',
                     onPress: async () => {
                         try {
@@ -93,10 +95,10 @@ export default function JobApplicantsScreen() {
                                 return app._id === applicantId ? { ...app, status: 'rejected' } : app;
                             }));
 
-                            Alert.alert('Done', 'Application rejected');
+                            Alert.alert(t('done'), t('application_rejected'));
                             fetchJobDetails();
                         } catch (error) {
-                            Alert.alert('Error', error.response?.data?.message || 'Failed to reject applicant');
+                            Alert.alert(t('error_title'), error.response?.data?.message || t('failed_to_reject_applicant'));
                         } finally {
                             setActionLoading(null);
                         }
@@ -129,7 +131,7 @@ export default function JobApplicantsScreen() {
 
     const handleCall = (mobile) => {
         if (!mobile) {
-            Alert.alert('Info', 'Mobile number not available');
+            Alert.alert(t('info'), t('mobile_not_available'));
             return;
         }
         Linking.openURL(`tel:${mobile}`);
@@ -137,7 +139,7 @@ export default function JobApplicantsScreen() {
 
     const handleWhatsApp = (mobile) => {
         if (!mobile) {
-            Alert.alert('Info', 'Mobile number not available');
+            Alert.alert(t('info') || 'Info', t('mobile_not_available') || 'Mobile number not available');
             return;
         }
         Linking.openURL(`whatsapp://send?phone=${mobile}`);
@@ -159,7 +161,7 @@ export default function JobApplicantsScreen() {
                     <View style={styles.cardHeader}>
                         <TouchableOpacity
                             style={styles.applicantInfo}
-                            onPress={() => router.push(`/worker/${worker._id}`)}
+                            onPress={() => router.push({ pathname: `/worker/${worker._id}`, params: { jobId: id, context: 'applicant' } })}
                         >
                             <View style={styles.avatar}>
                                 {worker.profilePicture ? (
@@ -169,7 +171,7 @@ export default function JobApplicantsScreen() {
                                 )}
                             </View>
                             <View style={styles.workerDetails}>
-                                <Text style={styles.workerName}>{worker.name || 'Worker'}</Text>
+                                <Text style={styles.workerName}>{worker.name || t('nav_profile')}</Text>
                                 <View style={styles.ratingRow}>
                                     {renderStars(worker.rating)}
                                     <Text style={styles.ratingText}>({worker.rating?.toFixed(1) || '0.0'})</Text>
@@ -180,7 +182,7 @@ export default function JobApplicantsScreen() {
                                     </Text>
                                 )}
                                 <Text style={styles.experience}>
-                                    {worker.isFresher ? 'Fresher' : `${worker.experience || 0} yrs exp`}
+                                    {worker.isFresher ? t('fresher') : `${worker.experience || 0} ${t('years_exp')}`}
                                 </Text>
                             </View>
                         </TouchableOpacity>
@@ -204,12 +206,12 @@ export default function JobApplicantsScreen() {
                     {isHired ? (
                         <View style={styles.hiredBadge}>
                             <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
-                            <Text style={styles.hiredText}>Hired</Text>
+                            <Text style={styles.hiredText}>{t('hired')}</Text>
                         </View>
                     ) : item.status === 'rejected' ? (
                         <View style={[styles.hiredBadge, { backgroundColor: '#FFEBEE', borderColor: COLORS.danger }]}>
                             <Ionicons name="close-circle" size={16} color={COLORS.danger} />
-                            <Text style={[styles.hiredText, { color: COLORS.danger }]}>Rejected</Text>
+                            <Text style={[styles.hiredText, { color: COLORS.danger }]}>{t('reject')}</Text>
                         </View>
                     ) : (
                         <View style={styles.actionButtons}>
@@ -223,7 +225,7 @@ export default function JobApplicantsScreen() {
                                 ) : (
                                     <>
                                         <Ionicons name="checkmark" size={16} color={COLORS.white} />
-                                        <Text style={styles.hireButtonText}>Hire</Text>
+                                        <Text style={styles.hireButtonText}>{t('hire')}</Text>
                                     </>
                                 )}
                             </TouchableOpacity>
@@ -233,7 +235,7 @@ export default function JobApplicantsScreen() {
                                 disabled={actionLoading === worker._id}
                             >
                                 <Ionicons name="close" size={16} color={COLORS.danger} />
-                                <Text style={styles.rejectButtonText}>Reject</Text>
+                                <Text style={styles.rejectButtonText}>{t('reject')}</Text>
                             </TouchableOpacity>
                         </View>
                     )}
@@ -243,7 +245,7 @@ export default function JobApplicantsScreen() {
     };
 
     if (loading) {
-        return <LoadingSpinner fullScreen message="Loading applicants..." />;
+        return <LoadingSpinner fullScreen message={t('loading_applicants')} />;
     }
 
     const allApplicants = applications || [];
@@ -266,7 +268,7 @@ export default function JobApplicantsScreen() {
                     <View style={styles.subtitleRow}>
                         <Ionicons name="business" size={16} color="rgba(255,255,255,0.8)" />
                         <Text style={styles.subtitleText}>
-                            {job?.employer?.companyName || 'Company'}
+                            {job?.employer?.companyName || t('company')}
                         </Text>
                     </View>
                 </View>
@@ -276,17 +278,17 @@ export default function JobApplicantsScreen() {
                 <View style={styles.statsRow}>
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>{allApplicants.length}</Text>
-                        <Text style={styles.statLabel}>Total</Text>
+                        <Text style={styles.statLabel}>{t('total')}</Text>
                     </View>
                     <View style={styles.verticalDivider} />
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>{job?.workers?.length || 0}</Text>
-                        <Text style={styles.statLabel}>Hired</Text>
+                        <Text style={styles.statLabel}>{t('hired')}</Text>
                     </View>
                     <View style={styles.verticalDivider} />
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>{job?.totalOpenings || 1}</Text>
-                        <Text style={styles.statLabel}>Openings</Text>
+                        <Text style={styles.statLabel}>{t('openings')}</Text>
                     </View>
                 </View>
             </View>
@@ -297,7 +299,7 @@ export default function JobApplicantsScreen() {
                     onPress={() => setActiveTab('candidate-apps')}
                 >
                     <Text style={[styles.tabText, activeTab === 'candidate-apps' && styles.activeTabText]}>
-                        Candidate Apps
+                        {t('candidate_apps')}
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -305,14 +307,14 @@ export default function JobApplicantsScreen() {
                     onPress={() => setActiveTab('hire-requests')}
                 >
                     <Text style={[styles.tabText, activeTab === 'hire-requests' && styles.activeTabText]}>
-                        Hire Requests
+                        {t('hire_requests')}
                     </Text>
                 </TouchableOpacity>
             </View>
 
             <View style={styles.sectionTitleRow}>
                 <Text style={styles.sectionTitle}>
-                    {activeTab === 'candidate-apps' ? 'Applications' : 'Employer Offers'} ({filteredApplicants.length})
+                    {activeTab === 'candidate-apps' ? t('applications') : t('employer_offers')} ({filteredApplicants.length})
                 </Text>
             </View>
         </View>
@@ -323,7 +325,7 @@ export default function JobApplicantsScreen() {
             <StatusBar style="light" />
             <Stack.Screen
                 options={{
-                    title: 'Applicants',
+                    title: t('applicants') || 'Applicants',
                     headerShown: true,
                     headerStyle: { backgroundColor: COLORS.primary },
                     headerTintColor: COLORS.white,
@@ -340,12 +342,12 @@ export default function JobApplicantsScreen() {
                     <View style={styles.emptyContainer}>
                         <Ionicons name="people-outline" size={60} color={COLORS.textSecondary} />
                         <Text style={styles.emptyTitle}>
-                            {activeTab === 'candidate-apps' ? 'No Applications Yet' : 'No Hire Requests Yet'}
+                            {activeTab === 'candidate-apps' ? t('no_applications_yet') : t('no_hire_requests_yet')}
                         </Text>
                         <Text style={styles.emptySubtitle}>
                             {activeTab === 'candidate-apps'
-                                ? 'Workers who apply will appear here'
-                                : 'Candidates you invited to hire will appear here'}
+                                ? t('workers_apply_here')
+                                : t('candidates_invited_here')}
                         </Text>
                     </View>
                 }

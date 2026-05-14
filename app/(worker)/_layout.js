@@ -77,6 +77,16 @@ export default function WorkerLayout() {
                     }}
                 />
                 <Tabs.Screen
+                    name="work-logs"
+                    options={{
+                        title: t('nav_work_logs') || 'Work Logs',
+                        tabBarIcon: ({ color, size }) => (
+                            <Ionicons name="time" size={size} color={color} />
+                        ),
+                        headerTitle: t('nav_work_logs') || 'Work Logs',
+                    }}
+                />
+                <Tabs.Screen
                     name="profile"
                     options={{
                         title: t('nav_profile'),

@@ -6,6 +6,7 @@ import {
     ScrollView,
     RefreshControl,
     TouchableOpacity,
+    AppState,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { router, useFocusEffect } from 'expo-router';
@@ -16,11 +17,14 @@ import { useSocket } from '../../context/SocketContext';
 import { getEmployerDashboard, getEmployerAnalytics } from '../../services/userService';
 import { getHiredJobs } from '../../services/jobService';
 import { getWorkLogsByJob } from '../../services/worklogService';
+import { getCurrentSubscription } from '../../services/subscriptionService';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function EmployerDashboard() {
     const { user } = useAuth();
+    const { t } = useLanguage();
     const { socket, connected } = useSocket();
     const [dashboardData, setDashboardData] = useState(null);
     const [analyticsData, setAnalyticsData] = useState(null);
@@ -28,6 +32,8 @@ export default function EmployerDashboard() {
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [hasWorklogAccess, setHasWorklogAccess] = useState(false);
+    const [isSubscriptionExpired, setIsSubscriptionExpired] = useState(false);
 
     const fetchDashboard = async () => {
         try {
@@ -55,7 +61,7 @@ export default function EmployerDashboard() {
                     if (!groupedByJob[jobId]) {
                         groupedByJob[jobId] = {
                             _id: jobId,
-                            title: app.job?.title || 'Unknown Job',
+                            title: app.job?.title || t('unknown_job'),
                             applicants: []
                         };
                     }
@@ -63,7 +69,7 @@ export default function EmployerDashboard() {
                     // Add applicant details to the job group
                     groupedByJob[jobId].applicants.push({
                         _id: app.worker?._id,
-                        name: app.worker?.name || 'Unknown',
+                        name: app.worker?.name || t('unknown'),
                         email: app.worker?.email,
                         availability: app.worker?.availability
                     });
@@ -75,8 +81,20 @@ export default function EmployerDashboard() {
             setAnalyticsData(analytics);
             setHiredJobs(hired);
 
-            // Fetch recent activity (work logs) for hired jobs
-            if (hired && hired.length > 0) {
+            // Fetch recent work-log activity only for premium/pro subscribers
+            let subscription = null;
+            try { subscription = await getCurrentSubscription(); } catch (_) { }
+            const planType = subscription?.planType || '';
+            const access = planType === 'premium' ||
+                (subscription?.worklogAccessExpiry && new Date(subscription.worklogAccessExpiry) > new Date()) ||
+                subscription?.addons?.worklogTracking === true;
+            
+            const isExpired = subscription?.endDate && new Date(subscription.endDate) < new Date();
+            setIsSubscriptionExpired(isExpired);
+
+            setHasWorklogAccess(access);
+
+            if (access && hired && hired.length > 0) {
                 const activityPromises = hired.map(async (job) => {
                     try {
                         const logsResponse = await getWorkLogsByJob(job._id);
@@ -142,18 +160,29 @@ export default function EmployerDashboard() {
         }, [])
     );
 
-    // Add socket listener for real-time OTP updates
+    // Add socket listeners for real-time updates
     useEffect(() => {
         if (socket && connected) {
-            console.log('🔌 Dashboard: Setting up workLogUpdated listener');
-            socket.on('workLogUpdated', (data) => {
-                console.log('⚡ Dashboard: Received workLogUpdated event:', data);
-                fetchDashboard();
-            });
+            console.log('🔌 EmployerDashboard: Setting up socket listeners');
+            
+            const handleUpdate = () => {
+                if (AppState.currentState === 'active') {
+                    console.log('⚡ EmployerDashboard: Refreshing due to socket event');
+                    fetchDashboard();
+                }
+            };
+
+            socket.on('workLogUpdated', handleUpdate);
+            socket.on('notification:new', handleUpdate);
+            socket.on('receiveMessage', handleUpdate);
+            socket.on('application:updated', handleUpdate);
 
             return () => {
-                console.log('🔌 Dashboard: Cleaning up workLogUpdated listener');
-                socket.off('workLogUpdated');
+                console.log('🔌 EmployerDashboard: Cleaning up socket listeners');
+                socket.off('workLogUpdated', handleUpdate);
+                socket.off('notification:new', handleUpdate);
+                socket.off('receiveMessage', handleUpdate);
+                socket.off('application:updated', handleUpdate);
             };
         }
     }, [socket, connected]);
@@ -164,7 +193,7 @@ export default function EmployerDashboard() {
     }, []);
 
     if (loading) {
-        return <LoadingSpinner fullScreen message="Loading dashboard..." />;
+        return <LoadingSpinner fullScreen message={t('loading')} />;
     }
 
     return (
@@ -178,10 +207,32 @@ export default function EmployerDashboard() {
             {/* Welcome Section - Extended Blue Header */}
             <View style={styles.headerBackground}>
                 <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.welcomeSection}>
-                    <Text style={styles.welcomeText}>Welcome back,</Text>
-                    <Text style={styles.userName}>{user?.companyName || user?.name || 'Employer'}! 👋</Text>
+                    <Text style={styles.welcomeText}>{t('welcome_back_name')}</Text>
+                    <Text style={styles.userName}>{user?.name || user?.companyName || t('employer')}! 👋</Text>
                 </Animated.View>
             </View>
+
+            {/* Expiry Alert Banner */}
+            {isSubscriptionExpired && (
+                <Animated.View entering={FadeInUp.springify()} style={styles.expiryBanner}>
+                    <View style={styles.expiryBannerContent}>
+                        <Ionicons name="warning" size={24} color={COLORS.white} />
+                        <View style={styles.expiryBannerTextContainer}>
+                            <Text style={styles.expiryBannerTitle}>{t('expired_title')}</Text>
+                            <Text style={styles.expiryBannerSubtitle}>
+                                {t('subscription_expired_msg') || 'Your subscription has expired. Please renew to continue using all features.'}
+                            </Text>
+                        </View>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.expiryBannerAction}
+                        onPress={() => router.push('/(employer)/subscription-plans')}
+                    >
+                        <Text style={styles.expiryBannerActionText}>{t('renew_sub')}</Text>
+                        <Ionicons name="arrow-forward" size={16} color={COLORS.danger} />
+                    </TouchableOpacity>
+                </Animated.View>
+            )}
 
             {/* Quick Stats - Overlapping */}
             <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.statsContainer}>
@@ -191,7 +242,7 @@ export default function EmployerDashboard() {
                             <Ionicons name="briefcase" size={22} color={COLORS.secondary} />
                         </View>
                         <Text style={styles.statNumber}>{dashboardData?.activeJobs || 0}</Text>
-                        <Text style={styles.statLabel}>Active</Text>
+                        <Text style={styles.statLabel}>{t('active_jobs')}</Text>
                     </Card>
                 </TouchableOpacity>
 
@@ -201,7 +252,7 @@ export default function EmployerDashboard() {
                             <Ionicons name="people" size={22} color={COLORS.primary} />
                         </View>
                         <Text style={styles.statNumber}>{dashboardData?.applicants || 0}</Text>
-                        <Text style={styles.statLabel}>Applicants</Text>
+                        <Text style={styles.statLabel}>{t('applicants')}</Text>
                     </Card>
                 </TouchableOpacity>
 
@@ -211,39 +262,62 @@ export default function EmployerDashboard() {
                             <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
                         </View>
                         <Text style={styles.statNumber}>{dashboardData?.hires || 0}</Text>
-                        <Text style={styles.statLabel}>Hired</Text>
+                        <Text style={styles.statLabel}>{t('hired')}</Text>
                     </Card>
                 </TouchableOpacity>
             </Animated.View>
 
             {/* Expanded Stats Grid */}
             <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>Overview</Text>
+                <Text style={styles.sectionTitle}>{t('overview')}</Text>
                 <View style={styles.statsGrid}>
                     <Card style={styles.miniStatCard}>
-                        <Text style={styles.miniStatLabel}>Open Apps</Text>
+                        <Text style={styles.miniStatLabel}>{t('open_apps')}</Text>
                         <Text style={styles.miniStatValue}>{dashboardData?.openApplications || 0}</Text>
                     </Card>
                     <Card style={styles.miniStatCard}>
-                        <Text style={styles.miniStatLabel}>Closed Apps</Text>
+                        <Text style={styles.miniStatLabel}>{t('closed_apps')}</Text>
                         <Text style={styles.miniStatValue}>{analyticsData?.closedApplications || 0}</Text>
                     </Card>
                     <Card style={styles.miniStatCard}>
-                        <Text style={styles.miniStatLabel}>Hire Reqs</Text>
+                        <Text style={styles.miniStatLabel}>{t('hire_reqs')}</Text>
                         <Text style={styles.miniStatValue}>{analyticsData?.hireRequests || 0}</Text>
                     </Card>
                     <Card style={styles.miniStatCard}>
-                        <Text style={styles.miniStatLabel}>Total Spent</Text>
+                        <Text style={styles.miniStatLabel}>{t('total_spent')}</Text>
                         <Text style={[styles.miniStatValue, { color: COLORS.primary }]}>₹{analyticsData?.totalSpent || 0}</Text>
                     </Card>
                 </View>
             </View>
 
             {/* Recent Activity (OTPs) */}
-            {recentActivity.length > 0 ? (
-                <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>Recent Activity (OTPs)</Text>
-                    {recentActivity.map((activity, index) => (
+            <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>{t('recent_activity_otps')}</Text>
+
+                {!hasWorklogAccess ? (
+                    <Card style={[styles.activityCard, { alignItems: 'center', paddingVertical: 24, borderLeftWidth: 0, backgroundColor: '#FAFAFA' }]}>
+                        <View style={{ width: 48, height: 48, backgroundColor: '#E3F2FD', borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                            <Ionicons name="flash" size={24} color={COLORS.primary} />
+                        </View>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: COLORS.text, marginBottom: 8 }}>{t('unlock_worklogs_banner')}</Text>
+                        <Text style={{ fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 16, paddingHorizontal: 10 }}>
+                            {t('worklog_unlock_description')}
+                        </Text>
+                        <TouchableOpacity
+                            style={{ backgroundColor: COLORS.primary, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20, width: '100%', alignItems: 'center', marginBottom: 8 }}
+                            onPress={() => router.push('/(employer)/subscription-plans')}
+                        >
+                            <Text style={{ color: COLORS.white, fontWeight: 'bold' }}>{t('unlock_for')} ₹2499 <Text style={{ fontSize: 10, opacity: 0.8 }}>(30 {t('days')})</Text></Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={{ borderWidth: 1, borderColor: COLORS.border, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20, width: '100%', alignItems: 'center' }}
+                            onPress={() => router.push('/(employer)/subscription-plans')}
+                        >
+                            <Text style={{ color: COLORS.text, fontWeight: '600' }}>{t('upgrade_plan')}</Text>
+                        </TouchableOpacity>
+                    </Card>
+                ) : recentActivity.length > 0 ? (
+                    recentActivity.map((activity, index) => (
                         <Card key={index} style={styles.activityCard}>
                             <View style={styles.activityHeader}>
                                 <Text style={styles.activityJobTitle}>{activity.jobTitle}</Text>
@@ -254,37 +328,34 @@ export default function EmployerDashboard() {
                             <View style={styles.otpContainer}>
                                 {(activity.startOtp || activity.startOtpVerified) && (
                                     <View style={[styles.otpBadge, { backgroundColor: '#E8F5E9', borderColor: '#C8E6C9' }]}>
-                                        <Text style={[styles.otpLabel, { color: '#2E7D32' }]}>Start OTP:</Text>
+                                        <Text style={[styles.otpLabel, { color: '#2E7D32' }]}>{t('start_otp')}:</Text>
                                         <Text style={[styles.otpValue, { color: '#2E7D32' }]}>
-                                            {activity.startOtp || 'Verified ✓'}
+                                            {activity.startOtp || t('verified') + ' ✓'}
                                         </Text>
                                     </View>
                                 )}
                                 {(activity.endOtp || activity.endOtpVerified) && (
                                     <View style={[styles.otpBadge, { backgroundColor: '#FFEBEE', borderColor: '#FFCDD2' }]}>
-                                        <Text style={[styles.otpLabel, { color: '#C62828' }]}>End OTP:</Text>
+                                        <Text style={[styles.otpLabel, { color: '#C62828' }]}>{t('end_otp')}:</Text>
                                         <Text style={[styles.otpValue, { color: '#C62828' }]}>
-                                            {activity.endOtp || 'Verified ✓'}
+                                            {activity.endOtp || t('verified') + ' ✓'}
                                         </Text>
                                     </View>
                                 )}
                             </View>
                         </Card>
-                    ))}
-                </View>
-            ) : (
-                <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>Recent Activity (OTPs)</Text>
+                    ))
+                ) : (
                     <Card style={[styles.activityCard, { alignItems: 'center', paddingVertical: 30, borderLeftWidth: 0 }]}>
                         <Ionicons name="notifications-outline" size={32} color={COLORS.textSecondary} style={{ opacity: 0.5 }} />
-                        <Text style={[styles.activityDate, { marginTop: 8 }]}>No recent work activity found.</Text>
+                        <Text style={[styles.activityDate, { marginTop: 8 }]}>{t('no_history')}</Text>
                     </Card>
-                </View>
-            )}
+                )}
+            </View>
 
             {/* Quick Actions */}
             <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
+                <Text style={styles.sectionTitle}>{t('quick_actions')}</Text>
                 <View style={styles.actionsGrid}>
                     <TouchableOpacity
                         style={styles.actionCard}
@@ -293,7 +364,7 @@ export default function EmployerDashboard() {
                         <View style={[styles.actionIcon, { backgroundColor: '#E3F2FD' }]}>
                             <Ionicons name="add-circle" size={28} color={COLORS.secondary} />
                         </View>
-                        <Text style={styles.actionText}>Post Job</Text>
+                        <Text style={styles.actionText}>{t('post_job')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -303,7 +374,7 @@ export default function EmployerDashboard() {
                         <View style={[styles.actionIcon, { backgroundColor: '#FFF3E0' }]}>
                             <Ionicons name="list" size={28} color={COLORS.primary} />
                         </View>
-                        <Text style={styles.actionText}>View Jobs</Text>
+                        <Text style={styles.actionText}>{t('view_jobs')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -313,7 +384,7 @@ export default function EmployerDashboard() {
                         <View style={[styles.actionIcon, { backgroundColor: '#E8F5E9' }]}>
                             <Ionicons name="search" size={28} color={COLORS.success} />
                         </View>
-                        <Text style={styles.actionText}>Find Workers</Text>
+                        <Text style={styles.actionText}>{t('find_workers')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -323,7 +394,7 @@ export default function EmployerDashboard() {
                         <View style={[styles.actionIcon, { backgroundColor: '#F3E5F5' }]}>
                             <Ionicons name="checkmark-done-circle" size={28} color="#9C27B0" />
                         </View>
-                        <Text style={styles.actionText}>Hired Workers</Text>
+                        <Text style={styles.actionText}>{t('hired_workers')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -333,7 +404,7 @@ export default function EmployerDashboard() {
                         <View style={[styles.actionIcon, { backgroundColor: '#E0F2F1' }]}>
                             <Ionicons name="settings" size={28} color="#009688" />
                         </View>
-                        <Text style={styles.actionText}>Settings</Text>
+                        <Text style={styles.actionText}>{t('settings')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -342,9 +413,9 @@ export default function EmployerDashboard() {
             {dashboardData?.recentApplicants && dashboardData.recentApplicants.length > 0 && (
                 <View style={styles.sectionContainer}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Recent Applicants</Text>
+                        <Text style={styles.sectionTitle}>{t('recent_applicants')}</Text>
                         <TouchableOpacity onPress={() => router.push('/(employer)/my-jobs')}>
-                            <Text style={styles.viewAllText}>View All</Text>
+                            <Text style={styles.viewAllText}>{t('view_all')}</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -354,7 +425,7 @@ export default function EmployerDashboard() {
                                 <Text style={styles.jobTitle}>{job.title}</Text>
                                 <View style={styles.applicantBadge}>
                                     <Text style={styles.applicantCount}>
-                                        {job.applicants?.length || 0} applicants
+                                        {job.applicants?.length || 0} {t('applicants')}
                                     </Text>
                                 </View>
                             </View>
@@ -617,5 +688,51 @@ const styles = StyleSheet.create({
     otpValue: {
         fontSize: 14,
         fontWeight: 'bold',
+    },
+    expiryBanner: {
+        marginHorizontal: 16,
+        marginTop: -30,
+        backgroundColor: COLORS.danger,
+        borderRadius: 12,
+        padding: 16,
+        elevation: 6,
+        shadowColor: COLORS.danger,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        zIndex: 10,
+    },
+    expiryBannerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    expiryBannerTextContainer: {
+        marginLeft: 12,
+        flex: 1,
+    },
+    expiryBannerTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: COLORS.white,
+    },
+    expiryBannerSubtitle: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.9)',
+        marginTop: 2,
+    },
+    expiryBannerAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.white,
+        paddingVertical: 10,
+        borderRadius: 20,
+        gap: 6,
+    },
+    expiryBannerActionText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: COLORS.danger,
     },
 });

@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getUnreadCount } from '../services/notificationService';
 import { COLORS } from '../constants/config';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -10,31 +9,9 @@ import { useSocket } from '../context/SocketContext';
 const NotificationBell = ({ iconSize = 24, iconColor = COLORS.text }) => {
     const router = useRouter();
     const { user } = useAuth();
-    const { socket, connected } = useSocket();
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const pulseAnim = useState(new Animated.Value(1))[0];
-
-    // Fetch unread notification count
-    const fetchUnreadCount = async () => {
-        if (!user) {
-            setUnreadCount(0);
-            return;
-        }
-
-        try {
-            setLoading(true);
-            const data = await getUnreadCount();
-            setUnreadCount(data.count || 0);
-        } catch (error) {
-            if (error.code !== 'ERR_NETWORK' && error.message !== 'Network Error') {
-                console.error('Error fetching unread count:', error.message);
-            }
-            setUnreadCount(0);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { unreadCount, connected } = useSocket();
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const prevCount = useRef(unreadCount);
 
     // Pulse animation for new notification
     const pulseNotification = () => {
@@ -52,43 +29,13 @@ const NotificationBell = ({ iconSize = 24, iconColor = COLORS.text }) => {
         ]).start();
     };
 
-    // Initial fetch
+    // Pulse when unread count increases
     useEffect(() => {
-        if (!user) return;
-        fetchUnreadCount();
-    }, [user]);
-
-    // Listen for real-time notification events
-    useEffect(() => {
-        if (!socket || !connected) return;
-
-        const handleNewNotification = (notification) => {
-            console.log('📬 New notification received:', notification);
-            setUnreadCount(prev => prev + 1);
+        if (unreadCount > prevCount.current) {
             pulseNotification();
-
-            // Optional: Show a toast or vibration
-            // Vibration.vibrate(100);
-        };
-
-        const handleNotificationRead = () => {
-            setUnreadCount(prev => Math.max(0, prev - 1));
-        };
-
-        const handleAllNotificationsRead = () => {
-            setUnreadCount(0);
-        };
-
-        socket.on('notification:new', handleNewNotification);
-        socket.on('notification:read', handleNotificationRead);
-        socket.on('notification:allRead', handleAllNotificationsRead);
-
-        return () => {
-            socket.off('notification:new', handleNewNotification);
-            socket.off('notification:read', handleNotificationRead);
-            socket.off('notification:allRead', handleAllNotificationsRead);
-        };
-    }, [socket, connected]);
+        }
+        prevCount.current = unreadCount;
+    }, [unreadCount]);
 
     const handlePress = () => {
         router.push('/notifications');
@@ -130,18 +77,18 @@ const styles = StyleSheet.create({
         right: -4,
         backgroundColor: COLORS.danger,
         borderRadius: 10,
-        minWidth: 20,
+        minWidth: 24,
         height: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 4,
+        paddingHorizontal: 2,
         borderWidth: 2,
         borderColor: COLORS.white,
     },
     badgeText: {
         color: COLORS.white,
-        fontSize: 11,
-        fontWeight: '700',
+        fontSize: 10,
+        fontWeight: '600',
     },
     connectedIndicator: {
         position: 'absolute',

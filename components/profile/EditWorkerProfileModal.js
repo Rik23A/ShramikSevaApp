@@ -80,7 +80,7 @@ export default function EditWorkerProfileModal({ visible, onClose, profile, onSa
 
     const handleSave = async () => {
         if (!formData.name.trim()) {
-            Alert.alert('Error', 'Name is required');
+            Alert.alert(t('error_title'), t('validation_name_req'));
             return;
         }
 
@@ -88,13 +88,13 @@ export default function EditWorkerProfileModal({ visible, onClose, profile, onSa
         try {
             await onSave({
                 ...formData,
-                experience: parseInt(formData.experience) || 0,
+                experience: Math.max(0, parseInt(formData.experience) || 0),
                 hourlyRate: parseInt(formData.hourlyRate) || 0,
                 locationName: formData.location // Ensure it maps to locationName
             });
             onClose();
         } catch (error) {
-            Alert.alert('Error', 'Failed to update profile');
+            Alert.alert(t('error_title'), t('profile_update_fail'));
         } finally {
             setSaving(false);
         }
@@ -260,7 +260,7 @@ export default function EditWorkerProfileModal({ visible, onClose, profile, onSa
                                     <TextInput
                                         style={[styles.input, styles.experienceInput]}
                                         value={formData.experience}
-                                        onChangeText={(text) => setFormData({ ...formData, experience: text })}
+                                        onChangeText={(text) => setFormData({ ...formData, experience: text.replace(/[^0-9]/g, '') })}
                                         placeholder={t('enter_experience')}
                                         placeholderTextColor={COLORS.textLight}
                                         keyboardType="numeric"

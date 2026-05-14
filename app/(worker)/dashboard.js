@@ -9,12 +9,16 @@ import {
     TouchableOpacity,
     StatusBar,
     Image,
+    Modal,
+    FlatList,
+    AppState,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getWorkerDashboard } from '../../services/userService';
 import { getPendingRatingPrompts } from '../../services/ratingService';
@@ -22,16 +26,21 @@ import JobCard from '../../components/JobCard';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import RatingModal from '../../components/ui/RatingModal';
+import ApplicationStatusModal from '../../components/ApplicationStatusModal';
 
 export default function WorkerDashboard() {
     const { user } = useAuth();
     const { t } = useLanguage();
+    const { socket, connected } = useSocket();
     const [dashboardData, setDashboardData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [pendingPrompts, setPendingPrompts] = useState([]);
     const [currentPrompt, setCurrentPrompt] = useState(null);
     const [showRatingModal, setShowRatingModal] = useState(false);
+    const [showAllApplications, setShowAllApplications] = useState(false);
+    const [selectedApplication, setSelectedApplication] = useState(null);
+    const [showStatusModal, setShowStatusModal] = useState(false);
 
     const fetchDashboard = async () => {
         try {
@@ -54,9 +63,38 @@ export default function WorkerDashboard() {
         }
     };
 
+    useFocusEffect(
+        useCallback(() => {
+            fetchDashboard();
+        }, [])
+    );
+
+    // Add socket listeners for real-time updates
     useEffect(() => {
-        fetchDashboard();
-    }, []);
+        if (socket && connected) {
+            console.log('🔌 WorkerDashboard: Setting up socket listeners');
+            
+            const handleUpdate = () => {
+                if (AppState.currentState === 'active') {
+                    console.log('⚡ WorkerDashboard: Refreshing due to socket event');
+                    fetchDashboard();
+                }
+            };
+
+            socket.on('notification:new', handleUpdate);
+            socket.on('receiveMessage', handleUpdate);
+            socket.on('application:updated', handleUpdate);
+            socket.on('job:updated', handleUpdate);
+
+            return () => {
+                console.log('🔌 WorkerDashboard: Cleaning up socket listeners');
+                socket.off('notification:new', handleUpdate);
+                socket.off('receiveMessage', handleUpdate);
+                socket.off('application:updated', handleUpdate);
+                socket.off('job:updated', handleUpdate);
+            };
+        }
+    }, [socket, connected]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -82,7 +120,7 @@ export default function WorkerDashboard() {
                 <View style={styles.headerContent}>
                     <View>
                         <Text style={styles.welcomeSubtitle}>{t('welcome')},</Text>
-                        <Text style={styles.userName}>{user?.name || 'Worker'}! 👋</Text>
+                        <Text style={styles.userName}>{user?.name || t('worker')}! 👋</Text>
                     </View>
 
                 </View>
@@ -142,7 +180,7 @@ export default function WorkerDashboard() {
                         </View>
                         <View style={styles.actionTextContainer}>
                             <Text style={styles.actionTitle}>{t('my_work')}</Text>
-                            <Text style={styles.actionSubtitle}>Track Status</Text>
+                            <Text style={styles.actionSubtitle}>{t('track_status')}</Text>
                         </View>
                     </TouchableOpacity>
                 </View>
@@ -151,7 +189,7 @@ export default function WorkerDashboard() {
                 {dashboardData?.recommendedJobs && dashboardData.recommendedJobs.length > 0 && (
                     <Animated.View entering={FadeInDown.delay(200).duration(500)}>
                         <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>{t('recommended_jobs')}</Text>
+                            <Text style={[styles.sectionTitle, { marginHorizontal: 0, marginTop: 0, marginBottom: 0 }]}>{t('recommended_jobs')}</Text>
                             <TouchableOpacity onPress={() => router.push('/(worker)/jobs')}>
                                 <Text style={styles.viewAllText}>{t('view_all')}</Text>
                             </TouchableOpacity>
@@ -170,24 +208,49 @@ export default function WorkerDashboard() {
                 {/* Recent Applications */}
                 {dashboardData?.recentApplications && dashboardData.recentApplications.length > 0 && (
                     <Animated.View entering={FadeInDown.delay(300).duration(500)} style={{ marginBottom: 20 }}>
-                        <Text style={styles.sectionTitle}>{t('recent_applications')}</Text>
+                        <View style={styles.sectionHeader}>
+                            <Text style={[styles.sectionTitle, { marginHorizontal: 0, marginTop: 0, marginBottom: 0 }]}>{t('recent_applications')}</Text>
+                            {dashboardData.recentApplications.length > 3 && (
+                                <TouchableOpacity onPress={() => setShowAllApplications(true)}>
+                                    <Text style={styles.viewAllText}>{t('view_all')}</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
                         {dashboardData.recentApplications.slice(0, 3).map((job) => (
                             <TouchableOpacity
                                 key={job._id}
-                                onPress={() => router.push(`/job-details/${job.job?._id || job._id}`)}
+                                onPress={() => {
+                                    setSelectedApplication({
+                                        ...job,
+                                        job: {
+                                            _id: job._id,
+                                            title: job.title,
+                                            employer: job.employer
+                                        }
+                                    });
+                                    setShowStatusModal(true);
+                                }}
                             >
                                 <Card style={styles.applicationCard}>
                                     <View style={styles.applicationHeader}>
-                                        <View>
+                                        <View style={{ flex: 1 }}>
                                             <Text style={styles.applicationTitle} numberOfLines={1}>{job.title}</Text>
-                                            <Text style={styles.applicationCompany}>{job.employer?.companyName || 'Company'}</Text>
+                                            <Text style={styles.applicationCompany}>{job.employer?.companyName || t('company')}</Text>
                                         </View>
                                         <View style={[styles.statusBadge,
                                         job.status === 'open' && styles.statusOpen,
                                         job.status === 'hired' && styles.statusHired,
                                         job.status === 'rejected' && styles.statusRejected,
                                         ]}>
-                                            <Text style={styles.statusText}>{job.applicationStatus || job.status}</Text>
+                                            <Text style={styles.statusText}>{t('status_' + (job.applicationStatus || job.status)) || (job.applicationStatus || job.status)}</Text>
+                                        </View>
+                                    </View>
+                                    <View style={styles.appMeta}>
+                                        <View style={styles.appMetaItem}>
+                                            <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
+                                            <Text style={styles.appMetaText}>
+                                                {t('date_applied')}: {new Date(job.appliedDate).toLocaleDateString()}
+                                            </Text>
                                         </View>
                                     </View>
                                 </Card>
@@ -196,7 +259,6 @@ export default function WorkerDashboard() {
                     </Animated.View>
                 )}
             </View>
-
 
             <RatingModal
                 visible={showRatingModal}
@@ -214,6 +276,80 @@ export default function WorkerDashboard() {
                         setShowRatingModal(false);
                     }
                 }}
+            />
+
+            {/* View All Applications Modal */}
+            <Modal
+                visible={showAllApplications}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowAllApplications(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>{t('recent_applications')}</Text>
+                            <TouchableOpacity onPress={() => setShowAllApplications(false)} style={styles.closeButton}>
+                                <Ionicons name="close" size={24} color={COLORS.text} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <FlatList
+                            data={dashboardData?.recentApplications}
+                            keyExtractor={(item) => item._id}
+                            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+                            renderItem={({ item: job }) => (
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setShowAllApplications(false);
+                                        setSelectedApplication({
+                                            ...job,
+                                            job: {
+                                                _id: job._id,
+                                                title: job.title,
+                                                employer: job.employer
+                                            }
+                                        });
+                                        setShowStatusModal(true);
+                                    }}
+                                >
+                                    <Card style={[styles.applicationCard, { marginHorizontal: 0 }]}>
+                                        <View style={styles.applicationHeader}>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.applicationTitle} numberOfLines={1}>{job.title}</Text>
+                                                <Text style={styles.applicationCompany}>{job.employer?.companyName || t('company')}</Text>
+                                            </View>
+                                            <View style={[styles.statusBadge,
+                                            job.status === 'open' && styles.statusOpen,
+                                            job.status === 'hired' && styles.statusHired,
+                                            job.status === 'rejected' && styles.statusRejected,
+                                            ]}>
+                                                <Text style={styles.statusText}>{t('status_' + (job.applicationStatus || job.status)) || (job.applicationStatus || job.status)}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.appMeta}>
+                                            <View style={styles.appMetaItem}>
+                                                <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
+                                                <Text style={styles.appMetaText}>
+                                                    {t('date_applied')}: {new Date(job.appliedDate).toLocaleDateString()}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </Card>
+                                </TouchableOpacity>
+                            )}
+                        />
+                    </View>
+                </View>
+            </Modal>
+
+            <ApplicationStatusModal
+                isOpen={showStatusModal}
+                onClose={() => {
+                    setShowStatusModal(false);
+                    setSelectedApplication(null);
+                }}
+                application={selectedApplication}
             />
         </ScrollView >
     );
@@ -387,7 +523,22 @@ const styles = StyleSheet.create({
     applicationCompany: {
         fontSize: 13,
         color: COLORS.textSecondary,
-        marginTop: 2,
+    },
+    appMeta: {
+        flexDirection: 'row',
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+    },
+    appMetaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    appMetaText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        marginLeft: 4,
     },
     statusBadge: {
         paddingHorizontal: 10,
@@ -409,5 +560,32 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: COLORS.white,
         textTransform: 'uppercase',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: COLORS.background,
+        borderTopLeftRadius: 30,
+        borderTopRightRadius: 30,
+        height: '80%',
+        paddingTop: 20,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        marginBottom: 20,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: COLORS.text,
+    },
+    closeButton: {
+        padding: 4,
     },
 });

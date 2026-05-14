@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -9,10 +9,10 @@ import {
     Linking,
     Modal,
 } from 'react-native';
-import { router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { COLORS } from '../../constants/config';
+import { COLORS, API_URL, WEB_URL } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getProfile, updateProfile, getEmployerDashboard } from '../../services/userService';
@@ -24,6 +24,7 @@ import EditEmployerProfileModal from '../../components/profile/EditEmployerProfi
 import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
 import DocumentUploadSection from '../../components/profile/DocumentUploadSection';
 import LanguageSelectionModal from '../../components/profile/LanguageSelectionModal';
+import ChangePasswordModal from '../../components/profile/ChangePasswordModal';
 import { translations, LANGUAGES } from '../../constants/translations';
 
 export default function EmployerProfileScreen() {
@@ -35,17 +36,20 @@ export default function EmployerProfileScreen() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [showLangModal, setShowLangModal] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
 
     const employerDocTypes = [
-        { label: 'GST Certificate', value: 'gst_certificate' },
-        { label: 'PAN Card', value: 'pan_card' },
-        { label: 'Company Registration', value: 'company_registration' },
-        { label: 'Other', value: 'other' },
+        { label: t('gst_certificate'), value: 'gst_certificate' },
+        { label: t('pan_card'), value: 'pan_card' },
+        { label: t('company_registration'), value: 'company_registration' },
+        { label: t('other'), value: 'other' },
     ];
 
-    useEffect(() => {
-        fetchProfile();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            fetchProfile();
+        }, [])
+    );
 
     const fetchProfile = async () => {
         try {
@@ -66,12 +70,12 @@ export default function EmployerProfileScreen() {
 
     const handleLogout = () => {
         Alert.alert(
-            'Logout',
-            'Are you sure you want to logout?',
+            t('logout'),
+            t('logout_confirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Logout',
+                    text: t('logout'),
                     style: 'destructive',
                     onPress: async () => {
                         await logout();
@@ -93,8 +97,8 @@ export default function EmployerProfileScreen() {
 
         const config = {
             pending: { icon: 'time-outline', color: COLORS.warning, text: t('pending') },
-            verified: { icon: 'shield-checkmark', color: COLORS.success, text: t('verified') || 'Verified' },
-            rejected: { icon: 'close-circle-outline', color: COLORS.danger, text: t('rejected') || 'Rejected' },
+            verified: { icon: 'shield-checkmark', color: COLORS.success, text: t('verified') },
+            rejected: { icon: 'close-circle-outline', color: COLORS.danger, text: t('rejected') },
         };
         return config[status] || config.pending;
     };
@@ -109,7 +113,7 @@ export default function EmployerProfileScreen() {
             updateUser({ profilePicture: uploadResult.fileUrl });
         } catch (error) {
             console.error('Failed to upload image:', error);
-            Alert.alert('Error', 'Failed to upload company logo');
+            Alert.alert(t('error_title'), t('failed_to_upload_doc') || 'Failed to upload company logo');
         } finally {
             setUploading(false);
         }
@@ -120,7 +124,7 @@ export default function EmployerProfileScreen() {
             await updateProfile(updatedData);
             setProfile({ ...profile, ...updatedData });
             updateUser(updatedData);
-            Alert.alert('Success', 'Profile updated successfully');
+            Alert.alert(t('success'), t('profile_updated_success'));
         } catch (error) {
             throw error;
         }
@@ -132,7 +136,7 @@ export default function EmployerProfileScreen() {
     };
 
     if (loading) {
-        return <LoadingSpinner fullScreen message="Loading profile..." />;
+        return <LoadingSpinner fullScreen message={t('loading')} />;
     }
 
     const companyDetails = profile?.companyDetails || {};
@@ -193,7 +197,7 @@ export default function EmployerProfileScreen() {
                     {profile?.gender && (
                         <View style={styles.genderContainer}>
                             <Ionicons name={profile.gender === 'Male' ? 'male' : profile.gender === 'Female' ? 'female' : 'person'} size={14} color={COLORS.textSecondary} />
-                            <Text style={styles.genderText}>{t('gender')}: {profile.gender}</Text>
+                            <Text style={styles.genderText}>{t('gender')}: {t(profile.gender)}</Text>
                         </View>
                     )}
 
@@ -211,14 +215,14 @@ export default function EmployerProfileScreen() {
                         <View style={styles.verticalDivider} />
                         <View style={styles.statItem}>
                             <Text style={styles.statNumber}>{dashboardData?.totalApplicants ?? profile?.stats?.totalApplicants ?? 0}</Text>
-                            <Text style={styles.statLabel}>{t('total_applicants') || 'Applicants'}</Text>
+                            <Text style={styles.statLabel}>{t('total_applicants')}</Text>
                         </View>
                         <View style={styles.verticalDivider} />
                         <View style={styles.statItem}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                 <Text style={styles.statNumber}>{dashboardData?.hires ?? profile?.stats?.totalHires ?? 0}</Text>
                             </View>
-                            <Text style={styles.statLabel}>{t('hired') || 'Hired'}</Text>
+                            <Text style={styles.statLabel}>{t('hired')}</Text>
                         </View>
                     </View>
 
@@ -239,41 +243,51 @@ export default function EmployerProfileScreen() {
                 </Animated.View>
 
                 {/* Subscription Status Card */}
-                {profile?.subscription && (
-                    <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.subscriptionCard}>
-                        <View style={styles.subscriptionHeader}>
-                            <View style={styles.subscriptionIconContainer}>
-                                <Ionicons name="diamond" size={20} color={COLORS.primary} />
+                {profile?.subscription && (() => {
+                    const isExpired = profile.subscription.endDate && new Date(profile.subscription.endDate) < new Date();
+                    return (
+                        <Animated.View entering={FadeInDown.delay(150).springify()} style={[styles.subscriptionCard, isExpired && { borderLeftColor: COLORS.danger }]}>
+                            <View style={styles.subscriptionHeader}>
+                                <View style={[styles.subscriptionIconContainer, isExpired && { backgroundColor: COLORS.dangerLight }]}>
+                                    <Ionicons name="diamond" size={20} color={isExpired ? COLORS.danger : COLORS.primary} />
+                                </View>
+                                <View style={styles.subscriptionInfo}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={styles.subscriptionPlan}>{profile.subscription.plan || t('free')} {t('plan')}</Text>
+                                        {isExpired && (
+                                            <View style={[styles.statusBadgeSmall, { backgroundColor: COLORS.dangerLight }]}>
+                                        <Text style={[styles.statusBadgeTextSmall, { color: COLORS.danger }]}>{t('expired_title')}</Text>
+                                    </View>
+                                )}
                             </View>
-                            <View style={styles.subscriptionInfo}>
-                                <Text style={styles.subscriptionPlan}>{profile.subscription.plan || 'Free'} {t('plan') || 'Plan'}</Text>
-                                <Text style={styles.subscriptionStatus}>
-                                    {profile.subscription.status === 'active' ? (t('active') || 'Active') : (t('inactive') || 'Inactive')}
-                                </Text>
+                            <Text style={[styles.subscriptionStatus, isExpired && { color: COLORS.danger }]}>
+                                {isExpired ? t('expired_title') : (profile.subscription.status === 'active' ? t('active') : t('inactive'))}
+                            </Text>
+                                </View>
+                                <TouchableOpacity
+                                    style={[styles.upgradeButton, isExpired && { backgroundColor: COLORS.danger }]}
+                                    onPress={() => router.push('/(employer)/subscription-plans')}
+                                >
+                                    <Text style={styles.upgradeButtonText}>{isExpired ? t('renew_sub') : t('manage')}</Text>
+                                </TouchableOpacity>
                             </View>
-                            <TouchableOpacity
-                                style={styles.upgradeButton}
-                                onPress={() => router.push('/(employer)/subscription-plans')}
-                            >
-                                <Text style={styles.upgradeButtonText}>{t('manage') || 'Manage'}</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <View style={styles.subscriptionLimits}>
-                            <View style={styles.limitItem}>
-                                <Text style={styles.limitLabel}>{t('nav_jobs')}</Text>
-                                <Text style={styles.limitValue}>
-                                    {dashboardData?.activeJobs || 0}/{profile.subscription.maxActiveJobs || 1}
-                                </Text>
+                            <View style={styles.subscriptionLimits}>
+                                <View style={styles.limitItem}>
+                                    <Text style={styles.limitLabel}>{t('nav_jobs')}</Text>
+                                    <Text style={styles.limitValue}>
+                                        {dashboardData?.activeJobs || 0}/{profile.subscription.maxActiveJobs || 1}
+                                    </Text>
+                                </View>
+                                <View style={styles.limitItem}>
+                                    <Text style={styles.limitLabel}>{t('database_unlocks')}</Text>
+                                    <Text style={styles.limitValue}>
+                                        {profile.subscription.databaseUnlocksUsed || 0}/{profile.subscription.maxDatabaseUnlocks || 0}
+                                    </Text>
+                                </View>
                             </View>
-                            <View style={styles.limitItem}>
-                                <Text style={styles.limitLabel}>{t('database_unlocks')}</Text>
-                                <Text style={styles.limitValue}>
-                                    {profile.subscription.databaseUnlocksUsed || 0}/{profile.subscription.maxDatabaseUnlocks || 0}
-                                </Text>
-                            </View>
-                        </View>
-                    </Animated.View>
-                )}
+                        </Animated.View>
+                    );
+                })()}
 
                 {/* Profile Completion Prompt */}
                 {!companyDetails.isProfileComplete && (
@@ -281,15 +295,15 @@ export default function EmployerProfileScreen() {
                         <View style={styles.alertContent}>
                             <Ionicons name="information-circle" size={24} color={COLORS.warning} />
                             <View style={styles.alertTextContainer}>
-                                <Text style={styles.alertTitle}>{t('complete_profile_title') || 'Complete Your Profile'}</Text>
-                                <Text style={styles.alertSubtitle}>{t('complete_profile_subtitle') || 'Add details to build trust with workers'}</Text>
+                                <Text style={styles.alertTitle}>{t('complete_profile_title')}</Text>
+                                <Text style={styles.alertSubtitle}>{t('complete_profile_subtitle')}</Text>
                             </View>
                         </View>
                         <TouchableOpacity
                             style={styles.alertAction}
                             onPress={() => setShowEditModal(true)}
                         >
-                            <Text style={styles.alertActionText}>{t('complete_now') || 'Complete Now'}</Text>
+                            <Text style={styles.alertActionText}>{t('complete_now')}</Text>
                             <Ionicons name="arrow-forward" size={16} color={COLORS.warning} />
                         </TouchableOpacity>
                     </Animated.View>
@@ -297,7 +311,7 @@ export default function EmployerProfileScreen() {
 
                 {/* Menu / Info Sections */}
                 <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionHeader}>{t('personal_info') || 'Personal Information'}</Text>
+                    <Text style={styles.sectionHeader}>{t('personal_info')}</Text>
                     <View style={styles.menuCard}>
                         <View style={styles.menuItem}>
                             <View style={[styles.menuIcon, { backgroundColor: '#E3F2FD' }]}>
@@ -343,7 +357,7 @@ export default function EmployerProfileScreen() {
                 </View>
 
                 <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionHeader}>{t('company_details') || 'Company Details'}</Text>
+                    <Text style={styles.sectionHeader}>{t('company_details')}</Text>
 
                     <View style={styles.menuCard}>
                         <View style={styles.menuItem}>
@@ -466,7 +480,7 @@ export default function EmployerProfileScreen() {
                                     style={styles.mapAction}
                                     onPress={() => openMapsLink(address.mapsLink)}
                                 >
-                                    <Text style={styles.mapActionText}>{t('view_on_maps') || 'View on Maps'}</Text>
+                                    <Text style={styles.mapActionText}>{t('view_on_maps')}</Text>
                                     <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
                                 </TouchableOpacity>
                             )}
@@ -479,7 +493,7 @@ export default function EmployerProfileScreen() {
 
                 {/* Account Actions */}
                 <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionHeader}>{t('quick_actions') || 'Settings'}</Text>
+                    <Text style={styles.sectionHeader}>{t('quick_actions')}</Text>
                     <View style={styles.menuCard}>
                         <TouchableOpacity
                             style={styles.menuItem}
@@ -489,7 +503,7 @@ export default function EmployerProfileScreen() {
                                 <Ionicons name="receipt-outline" size={20} color="#9C27B0" />
                             </View>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuValue}>{t('nav_billing') || 'Invoices & Billing'}</Text>
+                                <Text style={styles.menuValue}>{t('nav_billing')}</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
@@ -503,6 +517,32 @@ export default function EmployerProfileScreen() {
                             </View>
                             <View style={styles.menuContent}>
                                 <Text style={styles.menuValue}>{t('edit_profile')}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => Linking.openURL(`${WEB_URL}/${locale}/contact`)}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: '#E1F5FE' }]}>
+                                <Ionicons name="help-buoy-outline" size={20} color={COLORS.info} />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuValue}>{t('help_support')}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => setShowPasswordModal(true)}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: '#FFF9C4' }]}>
+                                <Ionicons name="lock-closed-outline" size={20} color="#FBC02D" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuValue}>{t('change_password')}</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
@@ -539,6 +579,11 @@ export default function EmployerProfileScreen() {
                 onSelect={handleLanguageChange}
                 currentLocale={locale}
                 t={t}
+            />
+
+            <ChangePasswordModal
+                visible={showPasswordModal}
+                onClose={() => setShowPasswordModal(false)}
             />
         </View>
     );
@@ -610,6 +655,16 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         textAlign: 'center',
         marginBottom: 4,
+    },
+    statusBadgeSmall: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    statusBadgeTextSmall: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
     },
     ownerName: {
         fontSize: 14,

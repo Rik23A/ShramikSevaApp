@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, WORKER_TYPES, AVAILABILITY } from '../constants/config';
+import { useLanguage } from '../context/LanguageContext';
 
 const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [] }) => {
+    const { t } = useLanguage();
     const [filters, setFilters] = useState({
         jobId: '',
         workerType: '',
@@ -70,7 +72,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
             <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
                     <View style={styles.header}>
-                        <Text style={styles.title}>Filter Workers</Text>
+                        <Text style={styles.title}>{t('filter_workers')}</Text>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                             <Ionicons name="close" size={24} color={COLORS.text} />
                         </TouchableOpacity>
@@ -81,7 +83,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
                         {/* Job Match / Smart Recommendations */}
                         {jobs.length > 0 && (
                             <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Smart Recommendations (Select Job)</Text>
+                                <Text style={styles.sectionTitle}>{t('smart_recommendations')}</Text>
                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
                                     <TouchableOpacity
                                         style={[
@@ -90,7 +92,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
                                         ]}
                                         onPress={() => setFilters(prev => ({ ...prev, jobId: '' }))}
                                     >
-                                        <Text style={[styles.jobChipText, !filters.jobId && styles.activeChipText]}>None</Text>
+                                        <Text style={[styles.jobChipText, !filters.jobId && styles.activeChipText]}>{t('any') || 'None'}</Text>
                                     </TouchableOpacity>
                                     {jobs.map(job => (
                                         <TouchableOpacity
@@ -112,7 +114,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
 
                         {/* Worker Type */}
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Worker Type</Text>
+                            <Text style={styles.sectionTitle}>{t('worker_type')}</Text>
                             <View style={styles.wrapContainer}>
                                 {WORKER_TYPES.map((type, index) => (
                                     <TouchableOpacity
@@ -136,12 +138,12 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
 
                         {/* Location */}
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Location</Text>
+                            <Text style={styles.sectionTitle}>{t('location')}</Text>
                             <View style={styles.inputContainer}>
                                 <Ionicons name="location-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
                                 <TextInput
                                     style={styles.input}
-                                    placeholder="Enter city or area"
+                                    placeholder={t('enter_city_area') || "Enter city or area"}
                                     value={filters.location}
                                     onChangeText={(text) => setFilters(prev => ({ ...prev, location: text }))}
                                     placeholderTextColor={COLORS.textSecondary}
@@ -151,7 +153,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
 
                         {/* Availability */}
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Availability</Text>
+                            <Text style={styles.sectionTitle}>{t('availability')}</Text>
                             <View style={styles.segmentContainer}>
                                 <TouchableOpacity
                                     style={[
@@ -160,7 +162,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
                                     ]}
                                     onPress={() => setFilters(prev => ({ ...prev, availability: '' }))}
                                 >
-                                    <Text style={[styles.segmentText, filters.availability === '' && styles.activeSegmentText]}>Any</Text>
+                                    <Text style={[styles.segmentText, filters.availability === '' && styles.activeSegmentText]}>{t('any')}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[
@@ -169,7 +171,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
                                     ]}
                                     onPress={() => setFilters(prev => ({ ...prev, availability: 'available' }))}
                                 >
-                                    <Text style={[styles.segmentText, filters.availability === 'available' && styles.activeSegmentText]}>Available</Text>
+                                    <Text style={[styles.segmentText, filters.availability === 'available' && styles.activeSegmentText]}>{t('available')}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[
@@ -178,7 +180,7 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
                                     ]}
                                     onPress={() => setFilters(prev => ({ ...prev, availability: 'unavailable' }))}
                                 >
-                                    <Text style={[styles.segmentText, filters.availability === 'unavailable' && styles.activeSegmentText]}>Unavailable</Text>
+                                    <Text style={[styles.segmentText, filters.availability === 'unavailable' && styles.activeSegmentText]}>{t('unavailable')}</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -187,10 +189,10 @@ const WorkerFilterModal = ({ visible, onClose, onApply, initialFilters, jobs = [
 
                     <View style={styles.footer}>
                         <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
-                            <Text style={styles.resetButtonText}>Reset</Text>
+                            <Text style={styles.resetButtonText}>{t('reset')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.applyButton} onPress={handleApply}>
-                            <Text style={styles.applyButtonText}>Apply Filters</Text>
+                            <Text style={styles.applyButtonText}>{t('apply_filters')}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>

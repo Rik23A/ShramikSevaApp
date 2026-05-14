@@ -7,18 +7,20 @@ import {
     TouchableOpacity,
     Image,
     TextInput,
-    ActivityIndicator,
     RefreshControl,
-    SafeAreaView
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import { getHiredJobs } from '../../services/jobService';
 import { getFullImageUrl } from '../../utils/imageUtil';
 import NotificationBell from '../../components/NotificationBell';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 export default function HiredJobsScreen() {
+    const { t } = useLanguage();
     const router = useRouter();
     const [hiredJobs, setHiredJobs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -34,16 +36,18 @@ export default function HiredJobsScreen() {
             setError(null);
         } catch (err) {
             console.error('Error fetching hired jobs:', err);
-            setError('Failed to load hired workers. Please try again.');
+            setError(t('failed_to_load_workers') || 'Failed to load hired workers. Please try again.');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     }, []);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    useFocusEffect(
+        useCallback(() => {
+            fetchData();
+        }, [fetchData])
+    );
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -66,7 +70,7 @@ export default function HiredJobsScreen() {
                     <Text style={styles.jobTitle}>{item.title}</Text>
                 </View>
                 <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{item.workers?.length || 0} Hired</Text>
+                    <Text style={styles.badgeText}>{t('hired_count').replace('{count}', item.workers?.length || 0)}</Text>
                 </View>
             </View>
 
@@ -96,7 +100,7 @@ export default function HiredJobsScreen() {
                             )}
                             <View style={styles.workerInfo}>
                                 <Text style={styles.workerName}>{worker.name}</Text>
-                                <Text style={styles.workerType}>{worker.workerType || 'General Worker'}</Text>
+                                <Text style={styles.workerType}>{worker.workerType || t('general_worker') || 'General Worker'}</Text>
                             </View>
                             <View style={[
                                 styles.statusBadge,
@@ -106,7 +110,7 @@ export default function HiredJobsScreen() {
                                     styles.statusText,
                                     { color: workerObj.status === 'completed' ? '#2E7D32' : '#EF6C00' }
                                 ]}>
-                                    {workerObj.status === 'completed' ? 'COMPLETED' : 'IN PROGRESS'}
+                                    {workerObj.status === 'completed' ? t('completed').toUpperCase() : t('in_progress').toUpperCase()}
                                 </Text>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
@@ -121,7 +125,7 @@ export default function HiredJobsScreen() {
         <SafeAreaView style={styles.container}>
             <Stack.Screen
                 options={{
-                    headerTitle: 'Hired Workers',
+                    headerTitle: t('hired_workers'),
                     headerRight: () => <NotificationBell iconColor={COLORS.white} />,
                 }}
             />
@@ -130,7 +134,7 @@ export default function HiredJobsScreen() {
                 <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
                 <TextInput
                     style={styles.searchInput}
-                    placeholder="Search by Job or Worker Name..."
+                    placeholder={t('search_job_worker_placeholder')}
                     value={searchTerm}
                     onChangeText={setSearchTerm}
                 />
@@ -142,21 +146,19 @@ export default function HiredJobsScreen() {
             </View>
 
             {loading && !refreshing ? (
-                <View style={styles.centerContainer}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
-                </View>
+                <LoadingSpinner fullScreen message={t('loading_hired')} />
             ) : error ? (
                 <View style={styles.centerContainer}>
                     <Text style={styles.errorText}>{error}</Text>
                     <TouchableOpacity style={styles.retryButton} onPress={() => fetchData()}>
-                        <Text style={styles.retryText}>Retry</Text>
+                        <Text style={styles.retryText}>{t('retry')}</Text>
                     </TouchableOpacity>
                 </View>
             ) : filteredJobs.length === 0 ? (
                 <View style={styles.centerContainer}>
                     <Ionicons name="people-outline" size={64} color={COLORS.textSecondary} style={{ opacity: 0.5 }} />
                     <Text style={styles.noDataText}>
-                        {searchTerm ? 'No hired workers match your search.' : 'You haven\'t hired any workers yet.'}
+                        {searchTerm ? t('no_hired_match') : t('no_hired_workers')}
                     </Text>
                 </View>
             ) : (
@@ -183,7 +185,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        padding: 16,
     },
     searchContainer: {
         flexDirection: 'row',

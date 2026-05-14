@@ -65,21 +65,21 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
 
     const handleSave = async () => {
         if (!formData.name.trim() || !formData.companyName.trim()) {
-            Alert.alert('Error', 'Name and Company Name are required');
+            Alert.alert(t('error_title'), t('validation_name_req') || 'Name and Company Name are required');
             return;
         }
 
         // Validate Contact Person Phone
         const phone = formData.companyDetails?.contactPerson?.phone;
         if (phone && !/^[6-9]\d{9}$/.test(phone)) {
-            Alert.alert('Error', 'Invalid contact person phone number');
+            Alert.alert(t('error_title'), t('valid_mobile_error'));
             return;
         }
 
         // Validate Contact Person Email
         const email = formData.companyDetails?.contactPerson?.email;
         if (email && !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email)) {
-            Alert.alert('Error', 'Invalid contact person email address');
+            Alert.alert(t('error_title'), t('valid_email_error') || 'Invalid contact person email address');
             return;
         }
 
@@ -88,7 +88,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
             await onSave(formData);
             onClose();
         } catch (error) {
-            Alert.alert('Error', 'Failed to update profile');
+            Alert.alert(t('error_title'), t('profile_update_fail') || 'Failed to update profile');
         } finally {
             setSaving(false);
         }
@@ -181,7 +181,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             style={[styles.input, styles.textArea]}
                             value={formData.bio}
                             onChangeText={(text) => setFormData({ ...formData, bio: text })}
-                            placeholder={t('bio_placeholder') || 'Tell us about yourself...'}
+                            placeholder={t('bio_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                             multiline
                             numberOfLines={4}
@@ -207,7 +207,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             style={styles.input}
                             value={formData.mobile}
                             onChangeText={(text) => setFormData({ ...formData, mobile: text })}
-                            placeholder={t('mobile_placeholder') || 'Owner mobile number'}
+                            placeholder={t('mobile_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="phone-pad"
                             maxLength={10}
@@ -237,7 +237,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             onPress={() => openDropdown('companyDetails.employeeCount', t('employee_count'), EMPLOYEE_COUNTS)}
                         >
                             <Text style={[styles.selectText, !formData.companyDetails.employeeCount && styles.placeholderText]}>
-                                {formData.companyDetails.employeeCount || t('select_employee_count') || 'Select employee count'}
+                                {formData.companyDetails.employeeCount || t('select_employee_count')}
                             </Text>
                             <Ionicons name="chevron-down" size={20} color={COLORS.textLight} />
                         </TouchableOpacity>
@@ -262,7 +262,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             style={styles.input}
                             value={String(formData.companyDetails.foundedYear || '')}
                             onChangeText={(text) => updateNestedField('companyDetails.foundedYear', text)}
-                            placeholder={t('founded_year_placeholder') || 'e.g., 2010'}
+                            placeholder={t('founded_year_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="numeric"
                             maxLength={4}
@@ -270,12 +270,12 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>{t('description') || 'Description'}</Text>
+                        <Text style={styles.label}>{t('description')}</Text>
                         <TextInput
                             style={[styles.input, styles.textArea]}
                             value={formData.companyDetails.description}
                             onChangeText={(text) => updateNestedField('companyDetails.description', text)}
-                            placeholder={t('company_description_placeholder') || 'Tell us about your company...'}
+                            placeholder={t('company_description_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                             multiline
                             numberOfLines={4}
@@ -291,7 +291,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             style={styles.input}
                             value={formData.companyDetails.contactPerson.name}
                             onChangeText={(text) => updateNestedField('companyDetails.contactPerson.name', text)}
-                            placeholder={t('contact_person_name_placeholder') || 'Contact person name'}
+                            placeholder={t('contact_person_name_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                         />
                     </View>
@@ -313,7 +313,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             style={styles.input}
                             value={formData.companyDetails.contactPerson.phone}
                             onChangeText={(text) => updateNestedField('companyDetails.contactPerson.phone', text)}
-                            placeholder={t('contact_number_placeholder') || 'Contact number'}
+                            placeholder={t('contact_number_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="phone-pad"
                             maxLength={10}
@@ -326,7 +326,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             style={styles.input}
                             value={formData.companyDetails.contactPerson.email}
                             onChangeText={(text) => updateNestedField('companyDetails.contactPerson.email', text)}
-                            placeholder={t('contact_email_placeholder') || 'Contact email'}
+                            placeholder={t('contact_email_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="email-address"
                             autoCapitalize="none"
@@ -337,12 +337,12 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     <Text style={styles.sectionTitle}>{t('location')}</Text>
 
                     <View style={styles.section}>
-                        <Text style={styles.label}>{t('street') || 'Street'}</Text>
+                        <Text style={styles.label}>{t('street')}</Text>
                         <TextInput
                             style={styles.input}
                             value={formData.companyDetails.address.street}
                             onChangeText={(text) => updateNestedField('companyDetails.address.street', text)}
-                            placeholder={t('street_placeholder') || 'Street address'}
+                            placeholder={t('street_placeholder')}
                             placeholderTextColor={COLORS.textLight}
                         />
                     </View>
@@ -402,7 +402,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
 
                 <View style={styles.footer}>
                     <Button
-                        title={saving ? (t('saving') || 'Saving...') : (t('save_changes') || 'Save Changes')}
+                        title={saving ? t('saving') : t('save_changes')}
                         onPress={handleSave}
                         disabled={saving}
                         loading={saving}
