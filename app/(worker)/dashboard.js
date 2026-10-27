@@ -27,9 +27,11 @@ import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import RatingModal from '../../components/ui/RatingModal';
 import ApplicationStatusModal from '../../components/ApplicationStatusModal';
+import ProfileCompletionCard from '../../components/ProfileCompletionCard';
+import ProfileCompletionModal from '../../components/ProfileCompletionModal';
 
 export default function WorkerDashboard() {
-    const { user } = useAuth();
+    const { user, refreshProfile } = useAuth();
     const { t } = useLanguage();
     const { socket, connected } = useSocket();
     const [dashboardData, setDashboardData] = useState(null);
@@ -46,7 +48,8 @@ export default function WorkerDashboard() {
         try {
             const [data, prompts] = await Promise.all([
                 getWorkerDashboard(),
-                getPendingRatingPrompts()
+                getPendingRatingPrompts(),
+                refreshProfile ? refreshProfile() : Promise.resolve(null)
             ]);
             setDashboardData(data);
             setPendingPrompts(prompts);
@@ -122,38 +125,40 @@ export default function WorkerDashboard() {
                         <Text style={styles.welcomeSubtitle}>{t('welcome')},</Text>
                         <Text style={styles.userName}>{user?.name || t('worker')}! 👋</Text>
                     </View>
-
-                </View>
-
-                {/* Quick Stats Grid Overlapping Header */}
-                <View style={styles.statsGrid}>
-                    <TouchableOpacity style={styles.statItem} onPress={() => router.push({ pathname: '/(worker)/my-work', params: { tab: 'applications' } })}>
-                        <View style={[styles.statIcon, { backgroundColor: '#E3F2FD' }]}>
-                            <Ionicons name="document-text" size={22} color={COLORS.secondary} />
-                        </View>
-                        <Text style={styles.statNumber}>{dashboardData?.activeApplications || 0}</Text>
-                        <Text style={styles.statLabel}>{t('active_applications')}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.statItem} onPress={() => router.push({ pathname: '/(worker)/my-work', params: { tab: 'assigned' } })}>
-                        <View style={[styles.statIcon, { backgroundColor: '#E8F5E9' }]}>
-                            <Ionicons name="briefcase" size={22} color={COLORS.success} />
-                        </View>
-                        <Text style={styles.statNumber}>{dashboardData?.assignedJobs || 0}</Text>
-                        <Text style={styles.statLabel}>{t('assigned_jobs')}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.statItem} onPress={() => router.push({ pathname: '/(worker)/my-work', params: { tab: 'requests' } })}>
-                        <View style={[styles.statIcon, { backgroundColor: '#FFF3E0' }]}>
-                            <Ionicons name="notifications" size={22} color={COLORS.primary} />
-                        </View>
-                        <Text style={styles.statNumber}>{dashboardData?.hiringRequests || 0}</Text>
-                        <Text style={styles.statLabel}>{t('hiring_requests')}</Text>
-                    </TouchableOpacity>
                 </View>
             </View>
 
-            <View style={{ marginTop: 60 }}>
+            {/* Quick Stats Grid Overlapping Header */}
+            <View style={styles.statsGrid}>
+                <TouchableOpacity style={styles.statItem} onPress={() => router.push({ pathname: '/(worker)/my-work', params: { tab: 'applications' } })}>
+                    <View style={[styles.statIcon, { backgroundColor: '#E3F2FD' }]}>
+                        <Ionicons name="document-text" size={22} color={COLORS.secondary} />
+                    </View>
+                    <Text style={styles.statNumber}>{dashboardData?.activeApplications || 0}</Text>
+                    <Text style={styles.statLabel}>{t('active_applications')}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.statItem} onPress={() => router.push({ pathname: '/(worker)/my-work', params: { tab: 'assigned' } })}>
+                    <View style={[styles.statIcon, { backgroundColor: '#E8F5E9' }]}>
+                        <Ionicons name="briefcase" size={22} color={COLORS.success} />
+                    </View>
+                    <Text style={styles.statNumber}>{dashboardData?.assignedJobs || 0}</Text>
+                    <Text style={styles.statLabel}>{t('assigned_jobs')}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.statItem} onPress={() => router.push({ pathname: '/(worker)/my-work', params: { tab: 'requests' } })}>
+                    <View style={[styles.statIcon, { backgroundColor: '#FFF3E0' }]}>
+                        <Ionicons name="notifications" size={22} color={COLORS.primary} />
+                    </View>
+                    <Text style={styles.statNumber}>{dashboardData?.hiringRequests || 0}</Text>
+                    <Text style={styles.statLabel}>{t('hiring_requests')}</Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Profile Completion Card */}
+            <ProfileCompletionCard style={{ marginHorizontal: 20, marginTop: 4, marginBottom: 8 }} />
+
+            <View style={styles.mainContent}>
                 {/* Quick Actions */}
                 <Text style={styles.sectionTitle}>{t('quick_actions')}</Text>
                 <View style={styles.actionsContainer}>
@@ -351,6 +356,9 @@ export default function WorkerDashboard() {
                 }}
                 application={selectedApplication}
             />
+
+            {/* Periodic Profile Completion Prompt Modal */}
+            <ProfileCompletionModal />
         </ScrollView >
     );
 }
@@ -366,17 +374,16 @@ const styles = StyleSheet.create({
     headerBackground: {
         backgroundColor: COLORS.primary,
         paddingTop: 25,
-        paddingBottom: 80, // Space for overlap
+        paddingBottom: 55, // Space for overlap
         paddingHorizontal: 20,
         borderBottomLeftRadius: 30,
         borderBottomRightRadius: 30,
-        marginBottom: -50, // Negative margin for overlap
     },
     headerContent: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 20,
+        marginBottom: 10,
     },
     welcomeSubtitle: {
         fontSize: 14,
@@ -407,16 +414,15 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         padding: 16,
         marginHorizontal: 20,
+        marginTop: -40,
+        marginBottom: 8,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 10,
         elevation: 5,
         justifyContent: 'space-between',
-        position: 'absolute',
-        bottom: -40,
-        left: 0,
-        right: 0,
+        zIndex: 10,
     },
     statItem: {
         flex: 1,
@@ -442,13 +448,16 @@ const styles = StyleSheet.create({
         marginTop: 2,
         fontWeight: '500',
     },
+    mainContent: {
+        marginTop: 4,
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '700',
         color: COLORS.text,
         marginBottom: 16,
         marginHorizontal: 20,
-        marginTop: 40,
+        marginTop: 12,
     },
     actionsContainer: {
         flexDirection: 'row',

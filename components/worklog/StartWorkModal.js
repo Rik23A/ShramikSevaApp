@@ -19,21 +19,37 @@ import { useToast } from '../../context/ToastContext';
 import { useLanguage } from '../../context/LanguageContext';
 import PhotoCapture from './PhotoCapture';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
+const StartWorkModal = ({ visible, onClose, jobId, jobData: propJobData, onSuccess }) => {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const { showToast } = useToast();
     const { t } = useLanguage();
     const { socket, connected } = useSocket();
 
     const [loading, setLoading] = useState(false);
+    const [checkingLog, setCheckingLog] = useState(true);
+    const [job, setJob] = useState(propJobData || null);
     const [otp, setOtp] = useState('');
     const [otpRequested, setOtpRequested] = useState(false);
     const [otpVerified, setOtpVerified] = useState(false);
-    const [currentStep, setCurrentStep] = useState(1);
+    const [currentStep, setCurrentStep] = useState(
+        propJobData && !propJobData.otpVerificationRequired ? 3 : 1
+    );
 
     useEffect(() => {
         if (visible) {
+            setCheckingLog(true);
+            if (propJobData) {
+                setJob(propJobData);
+                if (!propJobData.otpVerificationRequired) {
+                    setOtpVerified(true);
+                    setCurrentStep(3);
+                } else {
+                    setCurrentStep(1);
+                }
+            }
             checkExistingWorkLog();
         } else {
             // Reset state when modal closes
@@ -41,17 +57,23 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             setOtpRequested(false);
             setOtpVerified(false);
             setCurrentStep(1);
+            setJob(null);
+            setCheckingLog(true);
         }
-    }, [visible]);
+    }, [visible, propJobData]);
 
     const checkExistingWorkLog = async () => {
+        setCheckingLog(true);
         try {
-            // Fetch job to check OTP requirement
-            const { getJobById } = require('../../services/jobService');
-            const jobData = await getJobById(jobId);
+            // Fetch job to check OTP requirement if not provided via props
+            let jobData = propJobData;
+            if (!jobData && jobId) {
+                const { getJobById } = require('../../services/jobService');
+                jobData = await getJobById(jobId);
+                setJob(jobData);
+            }
 
             // We need to fetch the work log to see if OTP was already generated
-            // Assuming getWorkLogByJob is imported or available via props/context
             const { getWorkLogByJob } = require('../../services/worklogService');
             let log;
             try {
@@ -74,7 +96,7 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             }
 
             if (jobData && !jobData.otpVerificationRequired) {
-                // Bypass OTP completely
+                // Bypass OTP completely when employer doesn't require OTP
                 setOtpVerified(true);
                 setCurrentStep(3);
                 return;
@@ -93,6 +115,8 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             }
         } catch (error) {
             console.error('Error in checkExistingWorkLog:', error);
+        } finally {
+            setCheckingLog(false);
         }
     };
 
@@ -155,7 +179,7 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                 onClose();
             }, 1000);
         } catch (error) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Error);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             console.error('Error uploading photo:', error);
             const errorMessage = error?.response?.data?.message || error?.message || t('failed_to_upload_photo') || 'Failed to upload photo';
             Alert.alert(t('error_title'), errorMessage);
@@ -172,7 +196,7 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             onRequestClose={onClose}
         >
             <View style={styles.modalContainer}>
-                <View style={styles.modalHeader}>
+                <View style={[styles.modalHeader, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
                     <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                         <Ionicons name="close" size={24} color={COLORS.white} />
                     </TouchableOpacity>
@@ -180,83 +204,104 @@ const StartWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                     <View style={{ width: 40 }} />
                 </View>
 
-                <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-                    {currentStep === 1 && (
-                        <View style={styles.stepContent}>
-                            <View style={styles.infoCard}>
-                                <Ionicons name="information-circle" size={48} color={COLORS.primary} />
-                                <Text style={styles.infoTitle}>{t('ready_to_start_work')}</Text>
-                                <Text style={styles.infoText}>
-                                    {t('request_otp_employer')}
-                                </Text>
-                            </View>
-
-                            <TouchableOpacity
-                                style={[styles.primaryButton, loading && styles.buttonDisabled]}
-                                onPress={handleRequestOtp}
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <ActivityIndicator color={COLORS.white} />
-                                ) : (
-                                    <>
-                                        <Ionicons name="key" size={20} color={COLORS.white} />
-                                        <Text style={styles.primaryButtonText}>{t('request_otp_employer')}</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    )}
-
-                    {currentStep === 2 && otpRequested && (
-                        <View style={styles.stepContent}>
-                            <View style={styles.otpCard}>
-                                <Ionicons name="lock-closed" size={48} color={COLORS.primary} />
-                                <Text style={styles.otpTitle}>{t('enter_otp')}</Text>
-                                <Text style={styles.otpSubtitle}>
-                                    {t('ask_employer_otp') || 'Ask your employer for the 6-digit OTP'}
-                                </Text>
-
-                                <TextInput
-                                    style={styles.otpInput}
-                                    value={otp}
-                                    onChangeText={setOtp}
-                                    keyboardType="number-pad"
-                                    maxLength={6}
-                                    placeholder="000000"
-                                    placeholderTextColor={COLORS.textSecondary}
-                                    autoFocus
-                                />
+                {checkingLog ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color={COLORS.primary} />
+                        <Text style={styles.loadingText}>
+                            {t('loading') || 'Loading...'}
+                        </Text>
+                    </View>
+                ) : (
+                    <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                        {currentStep === 1 && (
+                            <View style={styles.stepContent}>
+                                <View style={styles.infoCard}>
+                                    <Ionicons name="information-circle" size={48} color={COLORS.primary} />
+                                    <Text style={styles.infoTitle}>{t('ready_to_start_work')}</Text>
+                                    <Text style={styles.infoText}>
+                                        {t('request_otp_employer')}
+                                    </Text>
+                                </View>
 
                                 <TouchableOpacity
-                                    style={[styles.primaryButton, (loading || otp.length !== 6) && styles.buttonDisabled]}
-                                    onPress={handleVerifyOtp}
-                                    disabled={loading || otp.length !== 6}
+                                    style={[styles.primaryButton, loading && styles.buttonDisabled]}
+                                    onPress={handleRequestOtp}
+                                    disabled={loading}
                                 >
                                     {loading ? (
                                         <ActivityIndicator color={COLORS.white} />
                                     ) : (
                                         <>
-                                            <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-                                            <Text style={styles.primaryButtonText}>{t('verify_otp')}</Text>
+                                            <Ionicons name="key" size={20} color={COLORS.white} />
+                                            <Text style={styles.primaryButtonText}>{t('request_otp_employer')}</Text>
                                         </>
                                     )}
                                 </TouchableOpacity>
                             </View>
-                        </View>
-                    )}
+                        )}
 
-                    {currentStep === 3 && otpVerified && (
-                        <View style={styles.stepContent}>
-                            <View style={styles.successCard}>
-                                <Ionicons name="checkmark-circle" size={48} color={COLORS.success} />
-                                <Text style={styles.successTitle}>{t('otp_verified_success')}</Text>
-                                <Text style={styles.successText}>{t('capture_photo_start')}</Text>
+                        {currentStep === 2 && otpRequested && (
+                            <View style={styles.stepContent}>
+                                <View style={styles.otpCard}>
+                                    <Ionicons name="lock-closed" size={48} color={COLORS.primary} />
+                                    <Text style={styles.otpTitle}>{t('enter_otp')}</Text>
+                                    <Text style={styles.otpSubtitle}>
+                                        {t('ask_employer_otp') || 'Ask your employer for the 6-digit OTP'}
+                                    </Text>
+
+                                    <TextInput
+                                        style={styles.otpInput}
+                                        value={otp}
+                                        onChangeText={setOtp}
+                                        keyboardType="number-pad"
+                                        maxLength={6}
+                                        placeholder="000000"
+                                        placeholderTextColor={COLORS.textSecondary}
+                                        autoFocus
+                                    />
+
+                                    <TouchableOpacity
+                                        style={[styles.primaryButton, (loading || otp.length !== 6) && styles.buttonDisabled]}
+                                        onPress={handleVerifyOtp}
+                                        disabled={loading || otp.length !== 6}
+                                    >
+                                        {loading ? (
+                                            <ActivityIndicator color={COLORS.white} />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+                                                <Text style={styles.primaryButtonText}>{t('verify_otp')}</Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
                             </View>
-                            <PhotoCapture type="start" onPhotoUploaded={handlePhotoUploaded} />
-                        </View>
-                    )}
-                </ScrollView>
+                        )}
+
+                        {currentStep === 3 && otpVerified && (
+                            <View style={styles.stepContent}>
+                                <View style={styles.successCard}>
+                                    <Ionicons
+                                        name={job?.otpVerificationRequired ? "checkmark-circle" : "camera"}
+                                        size={48}
+                                        color={COLORS.success}
+                                    />
+                                    <Text style={styles.successTitle}>
+                                        {job?.otpVerificationRequired
+                                            ? (t('otp_verified_success') || 'OTP Verified Successfully')
+                                            : (t('ready_to_start') || 'Ready to Start Work')}
+                                    </Text>
+                                    <Text style={styles.successText}>
+                                        {job?.otpVerificationRequired
+                                            ? (t('capture_photo_start') || 'Please take a photo at the work location to start work.')
+                                            : (t('capture_photo_start_direct') || 'Please take a photo at your work location to begin today\'s work.')}
+                                    </Text>
+                                </View>
+                                <PhotoCapture type="start" onPhotoUploaded={handlePhotoUploaded} />
+                            </View>
+                        )}
+                    </ScrollView>
+                )}
             </View>
         </Modal>
     );
@@ -267,12 +312,23 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: COLORS.background,
     },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 40,
+        gap: 12,
+    },
+    loadingText: {
+        fontSize: 15,
+        color: COLORS.textSecondary,
+        fontWeight: '500',
+    },
     modalHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         backgroundColor: COLORS.primary,
-        paddingTop: 50,
         paddingBottom: 16,
         paddingHorizontal: 16,
     },

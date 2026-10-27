@@ -15,6 +15,7 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { COLORS } from '../../constants/config';
+import * as Location from 'expo-location';
 import { useAuth } from '../../context/AuthContext';
 import { getPublicProfile, unlockWorkerProfile } from '../../services/userService';
 import { getCurrentSubscription } from '../../services/subscriptionService';
@@ -22,6 +23,7 @@ import { getHiredJobs, getCompletedJobs, getJobById, getApplicationsForJob, hire
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { getFullImageUrl } from '../../utils/imageUtil';
 import DirectHireModal from '../../components/employer/DirectHireModal';
+import DocumentViewerModal from '../../components/ui/DocumentViewerModal';
 import { useLanguage } from '../../context/LanguageContext';
 
 export default function WorkerDetailsScreen() {
@@ -33,6 +35,8 @@ export default function WorkerDetailsScreen() {
     const [loading, setLoading] = useState(true);
     const [isHired, setIsHired] = useState(false);
     const [showHireModal, setShowHireModal] = useState(false);
+    const [docViewerVisible, setDocViewerVisible] = useState(false);
+    const [selectedDoc, setSelectedDoc] = useState(null);
     const [completedJobs, setCompletedJobs] = useState([]);
     const [loadingCompletedJobs, setLoadingCompletedJobs] = useState(false);
     const [contextJob, setContextJob] = useState(null);
@@ -47,8 +51,29 @@ export default function WorkerDetailsScreen() {
     const fetchWorkerDetails = async () => {
         try {
             setLoading(true);
+
+            // Attempt to get coordinates for distance calculation
+            const params = {};
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status === 'granted') {
+                    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                    if (loc?.coords) {
+                        params.lat = loc.coords.latitude;
+                        params.lng = loc.coords.longitude;
+                    }
+                }
+            } catch (err) {
+                // Ignore location errors
+            }
+
+            if (!params.lat && user?.location?.coordinates?.length === 2) {
+                params.lng = user.location.coordinates[0];
+                params.lat = user.location.coordinates[1];
+            }
+
             const [profileData, subData] = await Promise.all([
-                getPublicProfile(id),
+                getPublicProfile(id, params),
                 getCurrentSubscription()
             ]);
 
@@ -226,7 +251,7 @@ export default function WorkerDetailsScreen() {
 
     return (
         <View style={styles.container}>
-            <StatusBar style="light" />
+            <StatusBar backgroundColor="#1976D2" style="light" />
             <Stack.Screen
                 options={{
                     title: t('my_profile'),
@@ -270,13 +295,11 @@ export default function WorkerDetailsScreen() {
                         <Text style={styles.reviewCount}>({worker.reviewCount || 0} {t('reviews') || 'reviews'})</Text>
                     </View>
 
-                    {worker.workerType && (
-                        <View style={styles.tagContainer}>
-                            {worker.workerType.slice(0, 3).map((type, index) => (
-                                <Text key={index} style={styles.roleTag}>{type}</Text>
-                            ))}
-                        </View>
-                    )}
+                    <View style={styles.tagContainer}>
+                        {worker.workerType && (Array.isArray(worker.workerType) ? worker.workerType : [worker.workerType]).map((type, index) => (
+                            <Text key={index} style={styles.roleTag}>{t(type.toLowerCase()) || type}</Text>
+                        ))}
+                    </View>
 
                     {/* Contact Actions Row */}
                     {worker.mobile ? (
@@ -311,10 +334,10 @@ export default function WorkerDetailsScreen() {
                 <View style={styles.statsGrid}>
                     <View style={styles.statItem}>
                         <Ionicons name="briefcase-outline" size={22} color={COLORS.primary} />
-                        <Text style={[styles.statValue, worker.isFresher && { fontSize: 14 }]}>
-                            {worker.isFresher ? t('fresher') : `${worker.experience}+`}
+                        <Text style={[styles.statValue, (worker.isFresher || !worker.experience || Number(worker.experience) === 0) && { fontSize: 14 }]}>
+                            {worker.isFresher || !worker.experience || Number(worker.experience) === 0 ? t('fresher') : `${worker.experience}+`}
                         </Text>
-                        <Text style={styles.statLabel}>{worker.isFresher ? t('experience') : t('exp_years')}</Text>
+                        <Text style={styles.statLabel}>{worker.isFresher || !worker.experience || Number(worker.experience) === 0 ? t('experience') : t('exp_years')}</Text>
                     </View>
                     <View style={styles.verticalDivider} />
                     <View style={styles.statItem}>
@@ -326,17 +349,172 @@ export default function WorkerDetailsScreen() {
                     <View style={styles.statItem}>
                         <Ionicons name="location-outline" size={22} color={COLORS.warning} />
                         <Text style={styles.statValue} numberOfLines={1}>
-                            {worker.locationName?.split(',')[0] || (typeof worker.location === 'string' ? worker.location.split(',')[0] : t('any'))}
+                            {worker.city || worker.locationName?.split(',')[0] || (typeof worker.location === 'string' ? worker.location.split(',')[0] : t('any'))}
                         </Text>
                         <Text style={styles.statLabel}>{t('location')}</Text>
                     </View>
                 </View>
 
+                {/* Candidate Overview Card (Education, Age, Gender, Rate) */}
+                <View style={styles.overviewCard}>
+                    <Text style={styles.overviewCardTitle}>{t('profile_overview') || 'Candidate Overview'}</Text>
+                    <View style={styles.overviewRow}>
+                        <View style={styles.overviewCol}>
+                            <View style={[styles.overviewIcon, { backgroundColor: '#EFF6FF' }]}>
+                                <Ionicons name="school-outline" size={18} color="#2563EB" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.overviewSubText}>{t('qualification') || 'Qualification'}</Text>
+                                <Text style={styles.overviewMainText} numberOfLines={1}>
+                                    {worker.qualification ? (t(worker.qualification.toLowerCase().replace(/ /g, '_')) || worker.qualification) : (t('not_specified') || 'Not Specified')}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.overviewCol}>
+                            <View style={[styles.overviewIcon, { backgroundColor: '#FEF3C7' }]}>
+                                <Ionicons name="calendar-outline" size={18} color="#D97706" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.overviewSubText}>{t('age') || 'Age'}</Text>
+                                <Text style={styles.overviewMainText}>
+                                    {worker.age ? `${worker.age} ${t('yrs') || 'Yrs'}` : (t('not_specified') || 'Not Specified')}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    <View style={[styles.overviewRow, { marginTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 }]}>
+                        <View style={styles.overviewCol}>
+                            <View style={[styles.overviewIcon, { backgroundColor: '#F3E8FF' }]}>
+                                <Ionicons name="person-outline" size={18} color="#9333EA" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.overviewSubText}>{t('gender') || 'Gender'}</Text>
+                                <Text style={styles.overviewMainText}>
+                                    {worker.gender ? (t(worker.gender.toLowerCase()) || worker.gender) : (t('not_specified') || 'Not Specified')}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.overviewCol}>
+                            <View style={[styles.overviewIcon, { backgroundColor: '#ECFDF5' }]}>
+                                <Ionicons name="cash-outline" size={18} color="#059669" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.overviewSubText}>{t('expected_salary') || 'Expected Salary'}</Text>
+                                <Text style={[styles.overviewMainText, { color: '#059669', fontWeight: 'bold' }]} numberOfLines={1}>
+                                    {worker.expectedSalary && (Number(worker.expectedSalary.min) > 0 || Number(worker.expectedSalary.max) > 0)
+                                        ? `${worker.expectedSalary.min > 0 && worker.expectedSalary.max > 0 ? `₹${Number(worker.expectedSalary.min).toLocaleString('en-IN')} – ₹${Number(worker.expectedSalary.max).toLocaleString('en-IN')}` : worker.expectedSalary.min > 0 ? `₹${Number(worker.expectedSalary.min).toLocaleString('en-IN')}` : `Up to ₹${Number(worker.expectedSalary.max).toLocaleString('en-IN')}`} / ${worker.expectedSalary.period === 'daily' ? (t('day') || 'day') : (t('mo') || 'mo')}`
+                                        : worker.hourlyRate && Number(worker.hourlyRate) > 0
+                                            ? `₹${worker.hourlyRate}/hr`
+                                            : (t('negotiable') || 'Negotiable')}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Full Location & Address Card */}
+                <View style={styles.sectionContainer}>
+                    <View style={styles.sectionHeaderRow}>
+                        <Ionicons name="location-outline" size={20} color={COLORS.primary} />
+                        <Text style={[styles.sectionTitle, { marginBottom: 0, marginLeft: 8 }]}>
+                            {t('location_details') || 'Location & Address'}
+                        </Text>
+                    </View>
+
+                    <View style={styles.locationCard}>
+                        {/* Full address description */}
+                        <View style={styles.locationMainRow}>
+                            <View style={styles.locationPinCircle}>
+                                <Ionicons name="location" size={20} color={COLORS.primary} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.fullAddressText}>
+                                    {worker.locationName || (typeof worker.location === 'string' ? worker.location : worker.location?.address) || [worker.city, worker.state, worker.pincode].filter(Boolean).join(', ') || (t('not_specified') || 'Not Specified')}
+                                </Text>
+
+                                {/* Distance badge if available */}
+                                {(worker.distance !== undefined && worker.distance !== null) && (
+                                    <View style={styles.distanceBadge}>
+                                        <Ionicons name="navigate-outline" size={13} color="#2563EB" />
+                                        <Text style={styles.distanceBadgeText}>
+                                            {Number(worker.distance) < 1
+                                                ? `${Math.round(Number(worker.distance) * 1000)} ${t('m_away_from_location') || 'm away from your location'}`
+                                                : `${Number(worker.distance).toFixed(1)} ${t('km_away_from_location') || 'km away from your location'}`}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+
+                        {/* Detailed Address Grid: City, State, Pincode if available */}
+                        {(worker.city || worker.state || worker.pincode) && (
+                            <View style={styles.addressPillsRow}>
+                                {worker.city ? (
+                                    <View style={styles.addressPill}>
+                                        <Text style={styles.addressPillLabel}>{t('city') || 'City'}:</Text>
+                                        <Text style={styles.addressPillValue}>{worker.city}</Text>
+                                    </View>
+                                ) : null}
+                                {worker.state ? (
+                                    <View style={styles.addressPill}>
+                                        <Text style={styles.addressPillLabel}>{t('state') || 'State'}:</Text>
+                                        <Text style={styles.addressPillValue}>{worker.state}</Text>
+                                    </View>
+                                ) : null}
+                                {worker.pincode ? (
+                                    <View style={styles.addressPill}>
+                                        <Text style={styles.addressPillLabel}>{t('pincode') || 'Pincode'}:</Text>
+                                        <Text style={styles.addressPillValue}>{worker.pincode}</Text>
+                                    </View>
+                                ) : null}
+                            </View>
+                        )}
+
+                        {/* Open in Google Maps Action */}
+                        <TouchableOpacity
+                            style={styles.openMapBtn}
+                            onPress={() => {
+                                const hasCoords = worker.location?.coordinates && worker.location.coordinates.length === 2 && (worker.location.coordinates[1] !== 0 || worker.location.coordinates[0] !== 0);
+                                const query = hasCoords
+                                    ? `${worker.location.coordinates[1]},${worker.location.coordinates[0]}`
+                                    : encodeURIComponent(worker.locationName || worker.city || '');
+                                if (query) {
+                                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
+                                }
+                            }}
+                        >
+                            <Ionicons name="map-outline" size={16} color={COLORS.primary} />
+                            <Text style={styles.openMapBtnText}>{t('view_on_maps') || 'View on Google Maps'}</Text>
+                            <Ionicons name="open-outline" size={14} color={COLORS.primary} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Languages Known Section */}
+                {worker.languages && worker.languages.length > 0 && (
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>{t('languages_known') || 'Languages Known'}</Text>
+                        <View style={styles.skillsWrapper}>
+                            {worker.languages.map((lang, index) => (
+                                <View key={index} style={[styles.skillChip, styles.languageChip]}>
+                                    <Ionicons name="chatbubbles-outline" size={14} color={COLORS.primary} />
+                                    <Text style={[styles.skillChipText, { color: COLORS.primary, fontWeight: '600' }]}>{lang}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </View>
+                )}
+
                 {/* Bio Section */}
                 {worker.bio ? (
                     <View style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>{t('about_me')}</Text>
-                        <Text style={styles.bioText}>{worker.bio}</Text>
+                        <Text style={styles.sectionTitle}>{t('about_me') || 'About Me'}</Text>
+                        <View style={styles.bioCard}>
+                            <Text style={styles.bioText}>{worker.bio}</Text>
+                        </View>
                     </View>
                 ) : null}
 
@@ -365,14 +543,17 @@ export default function WorkerDetailsScreen() {
                                 <TouchableOpacity
                                     key={index}
                                     style={styles.documentItem}
-                                    onPress={() => Linking.openURL(getFullImageUrl(doc.url))}
+                                    onPress={() => {
+                                        setSelectedDoc(doc);
+                                        setDocViewerVisible(true);
+                                    }}
                                 >
                                     <Ionicons name="document-text-outline" size={24} color={COLORS.primary} />
                                     <View style={styles.documentInfo}>
                                         <Text style={styles.documentName}>{doc.name || 'CV / Resume'}</Text>
                                         <Text style={styles.documentType}>{t('tap_to_view_pdf')}</Text>
                                     </View>
-                                    <Ionicons name="open-outline" size={20} color={COLORS.textSecondary} />
+                                    <Ionicons name="eye-outline" size={20} color={COLORS.primary} />
                                 </TouchableOpacity>
                             ))}
                     </View>
@@ -411,7 +592,7 @@ export default function WorkerDetailsScreen() {
 
                                         {job.rating?.review && (
                                             <View style={styles.reviewBox}>
-                                                <Text style={styles.reviewText}>"{job.rating.review}"</Text>
+                                                <Text style={styles.reviewText}>&quot;{job.rating.review}&quot;</Text>
                                             </View>
                                         )}
 
@@ -456,7 +637,7 @@ export default function WorkerDetailsScreen() {
                                     <>
                                         <Ionicons name="briefcase" size={20} color={COLORS.white} />
                                         <Text style={styles.mainHireBtnText}>
-                                            Hire for "{contextJob?.title || 'this job'}"
+                                            Hire for &quot;{contextJob?.title || 'this job'}&quot;
                                         </Text>
                                     </>
                                 )}
@@ -536,7 +717,7 @@ export default function WorkerDetailsScreen() {
 
                                 {job.rating?.review && (
                                     <View style={styles.reviewBox}>
-                                        <Text style={styles.reviewText}>"{job.rating.review}"</Text>
+                                        <Text style={styles.reviewText}>&quot;{job.rating.review}&quot;</Text>
                                     </View>
                                 )}
 
@@ -556,6 +737,17 @@ export default function WorkerDetailsScreen() {
                     </ScrollView>
                 </View>
             </Modal>
+
+            <DocumentViewerModal
+                visible={docViewerVisible}
+                onClose={() => {
+                    setDocViewerVisible(false);
+                    setSelectedDoc(null);
+                }}
+                title={selectedDoc?.name || t('biodata_cv') || 'CV / Resume'}
+                fileUrl={selectedDoc?.url}
+                fileName={selectedDoc ? `${selectedDoc.name || 'resume'}.pdf` : 'resume.pdf'}
+            />
         </View>
     );
 }
@@ -753,6 +945,69 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
 
+    qualificationTag: {
+        backgroundColor: '#EFF6FF',
+        color: '#2563EB',
+    },
+    ageTag: {
+        backgroundColor: '#FEF3C7',
+        color: '#D97706',
+    },
+    overviewCard: {
+        backgroundColor: COLORS.card,
+        marginHorizontal: 20,
+        borderRadius: 16,
+        padding: 18,
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+    },
+    overviewCardTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: COLORS.text,
+        marginBottom: 14,
+    },
+    overviewRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    overviewCol: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    overviewIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    overviewSubText: {
+        fontSize: 11,
+        color: COLORS.textSecondary,
+        fontWeight: '500',
+    },
+    overviewMainText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: COLORS.text,
+        marginTop: 1,
+    },
+    languageChip: {
+        backgroundColor: '#F0FDF4',
+        borderWidth: 1,
+        borderColor: '#BBF7D0',
+    },
+
     sectionContainer: {
         paddingHorizontal: 20,
         marginBottom: 24,
@@ -762,6 +1017,23 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: COLORS.text,
         marginBottom: 12,
+    },
+    bioCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+    },
+    bioText: {
+        fontSize: 15,
+        color: COLORS.text,
+        lineHeight: 22,
     },
     skillsWrapper: {
         flexDirection: 'row',
@@ -835,11 +1107,6 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         fontStyle: 'italic',
         marginLeft: 4,
-    },
-    bioText: {
-        fontSize: 15,
-        color: COLORS.text,
-        lineHeight: 22,
     },
     disabledStateBtn: {
         backgroundColor: COLORS.textSecondary,
@@ -942,5 +1209,102 @@ const styles = StyleSheet.create({
     modalScrollContent: {
         padding: 20,
         gap: 12,
+    },
+    locationCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+    },
+    locationMainRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+    },
+    locationPinCircle: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: '#EFF6FF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    fullAddressText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.text,
+        lineHeight: 22,
+    },
+    distanceBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        backgroundColor: '#EFF6FF',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8,
+        marginTop: 8,
+        gap: 5,
+        borderWidth: 1,
+        borderColor: '#DBEAFE',
+    },
+    distanceBadgeText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#2563EB',
+    },
+    addressPillsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 14,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#F1F5F9',
+    },
+    addressPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        gap: 4,
+    },
+    addressPillLabel: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    addressPillValue: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.text,
+    },
+    openMapBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 14,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        backgroundColor: '#EFF6FF',
+        borderRadius: 10,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+    },
+    openMapBtnText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.primary,
     },
 });

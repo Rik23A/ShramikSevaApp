@@ -21,6 +21,7 @@ const Input = ({
     ...props
 }) => {
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+    const isPasswordField = isPassword || secureTextEntry;
 
     return (
         <View style={[styles.container, containerStyle]}>
@@ -38,7 +39,7 @@ const Input = ({
                     style={[
                         styles.input,
                         icon && styles.inputWithIcon,
-                        isPassword && styles.inputWithToggle,
+                        isPasswordField && styles.inputWithToggle,
                         multiline && styles.multiline,
                         error && styles.inputError,
                         style,
@@ -47,17 +48,19 @@ const Input = ({
                     onChangeText={onChangeText}
                     placeholder={placeholder}
                     placeholderTextColor={COLORS.textSecondary}
-                    secureTextEntry={isPassword ? !isPasswordVisible : secureTextEntry}
+                    secureTextEntry={isPasswordField ? !isPasswordVisible : false}
                     keyboardType={keyboardType}
                     autoCapitalize={autoCapitalize}
                     multiline={multiline}
                     numberOfLines={numberOfLines}
                     {...props}
                 />
-                {isPassword && (
+                {isPasswordField && (
                     <TouchableOpacity
                         style={styles.toggleButton}
                         onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                         <Ionicons
                             name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}

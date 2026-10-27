@@ -7,6 +7,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import NotificationBell from '../../components/NotificationBell';
 import LocationTracker from '../../components/worklog/LocationTracker';
 import HeaderProfile from '../../components/HeaderProfile';
+import ProfileTabIcon from '../../components/ProfileTabIcon';
 
 export default function WorkerLayout() {
     const insets = useSafeAreaInsets();
@@ -91,7 +92,7 @@ export default function WorkerLayout() {
                     options={{
                         title: t('nav_profile'),
                         tabBarIcon: ({ color, size }) => (
-                            <Ionicons name="person" size={size} color={color} />
+                            <ProfileTabIcon color={color} size={size} />
                         ),
                         headerTitle: t('my_profile'),
                     }}

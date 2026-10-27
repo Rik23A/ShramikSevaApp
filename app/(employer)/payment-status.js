@@ -5,9 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../../constants/config';
 import { useLanguage } from '../../context/LanguageContext';
+import { useSubscription } from '../../context/SubscriptionContext';
 
 export default function PaymentStatusScreen() {
     const { t } = useLanguage();
+    const { refreshSubscription } = useSubscription();
     const params = useLocalSearchParams();
     const { status, orderId, txnId } = params;
     const isSuccess = status === 'success';
@@ -16,7 +18,10 @@ export default function PaymentStatusScreen() {
     // force close the Custom Tab overlay so the user can see this screen!
     useEffect(() => {
         WebBrowser.dismissBrowser();
-    }, []);
+        if (isSuccess) {
+            refreshSubscription();
+        }
+    }, [isSuccess, refreshSubscription]);
 
     return (
         <View style={styles.container}>

@@ -18,12 +18,14 @@ import * as Haptics from 'expo-haptics';
 import { uploadFile } from '../../services/uploadService';
 import ViewShot from 'react-native-view-shot';
 import { useLanguage } from '../../context/LanguageContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * Photo Capture Component
  * Handles camera permissions, photo capture, location capture, and upload
  */
 const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
+    const insets = useSafeAreaInsets();
     const { t } = useLanguage();
     const [permission, requestPermission] = useCameraPermissions();
     const [locationPermission, setLocationPermission] = useState(null);
@@ -189,6 +191,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                 visible={showCamera}
                 animationType="slide"
                 transparent={false}
+                statusBarTranslucent={true}
                 onRequestClose={() => setShowCamera(false)}
             >
                 <View style={styles.cameraContainer}>
@@ -198,7 +201,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                         facing={facing}
                     >
                         <View style={styles.cameraOverlay}>
-                            <View style={styles.cameraHeader}>
+                            <View style={[styles.cameraHeader, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
                                 <TouchableOpacity
                                     style={styles.closeButton}
                                     onPress={() => setShowCamera(false)}
@@ -210,7 +213,7 @@ const PhotoCapture = ({ onPhotoUploaded, type = 'start' }) => {
                                 </Text>
                             </View>
 
-                            <View style={styles.cameraFooter}>
+                            <View style={[styles.cameraFooter, { paddingBottom: Math.max(insets.bottom, 24) + 16 }]}>
                                 <TouchableOpacity
                                     style={styles.switchButton}
                                     onPress={toggleCameraFacing}

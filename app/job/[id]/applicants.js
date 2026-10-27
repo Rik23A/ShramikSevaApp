@@ -176,13 +176,17 @@ export default function JobApplicantsScreen() {
                                     {renderStars(worker.rating)}
                                     <Text style={styles.ratingText}>({worker.rating?.toFixed(1) || '0.0'})</Text>
                                 </View>
-                                {worker.workerType && worker.workerType.length > 0 && (
+                                {worker.workerType && (Array.isArray(worker.workerType) ? worker.workerType.length > 0 : true) && (
                                     <Text style={styles.workerType} numberOfLines={1}>
-                                        {worker.workerType.slice(0, 2).join(', ')}
+                                        {Array.isArray(worker.workerType)
+                                            ? worker.workerType.slice(0, 2).map(type => t(type.toLowerCase()) || type).join(', ')
+                                            : (t(String(worker.workerType).toLowerCase()) || worker.workerType)}
                                     </Text>
                                 )}
                                 <Text style={styles.experience}>
-                                    {worker.isFresher ? t('fresher') : `${worker.experience || 0} ${t('years_exp')}`}
+                                    {worker.isFresher || (!worker.experience && worker.experience !== 0) || Number(worker.experience) === 0
+                                        ? t('fresher')
+                                        : `${worker.experience} ${t('years_exp')}`}
                                 </Text>
                             </View>
                         </TouchableOpacity>
@@ -202,6 +206,47 @@ export default function JobApplicantsScreen() {
                             </TouchableOpacity>
                         </View>
                     </View>
+
+                    {/* Candidate Quick Stats: Qualification, Age, Location (WorkIndia style) */}
+                    <View style={styles.candidateDetailsGrid}>
+                        {(worker.age || worker.gender) ? (
+                            <View style={styles.candidateDetailChip}>
+                                <Ionicons name="person-outline" size={12} color={COLORS.primary} />
+                                <Text style={styles.candidateDetailText}>
+                                    {[worker.age ? `${worker.age} ${t('yrs') || 'yrs'}` : null, worker.gender ? (t(worker.gender.toLowerCase()) || worker.gender) : null].filter(Boolean).join(' • ')}
+                                </Text>
+                            </View>
+                        ) : null}
+
+                        {worker.qualification ? (
+                            <View style={styles.candidateDetailChip}>
+                                <Ionicons name="school-outline" size={12} color={COLORS.primary} />
+                                <Text style={styles.candidateDetailText} numberOfLines={1}>
+                                    {t(worker.qualification.toLowerCase().replace(/ /g, '_')) || worker.qualification}
+                                </Text>
+                            </View>
+                        ) : null}
+
+                        {(worker.locationName || (typeof worker.location === 'string' && worker.location)) ? (
+                            <View style={styles.candidateDetailChip}>
+                                <Ionicons name="location-outline" size={12} color={COLORS.primary} />
+                                <Text style={styles.candidateDetailText} numberOfLines={1}>
+                                    {worker.locationName || worker.location}
+                                </Text>
+                            </View>
+                        ) : null}
+                    </View>
+
+                    {/* Languages Known */}
+                    {worker.languages && worker.languages.length > 0 && (
+                        <View style={styles.applicantLanguagesRow}>
+                            <Ionicons name="chatbubbles-outline" size={12} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
+                            <Text style={styles.applicantLanguagesLabel}>{t('languages') || 'Languages'}: </Text>
+                            <Text style={styles.applicantLanguagesText} numberOfLines={1}>
+                                {worker.languages.join(', ')}
+                            </Text>
+                        </View>
+                    )}
 
                     {isHired ? (
                         <View style={styles.hiredBadge}>
@@ -322,7 +367,7 @@ export default function JobApplicantsScreen() {
 
     return (
         <View style={styles.container}>
-            <StatusBar style="light" />
+            <StatusBar backgroundColor="#1976D2" style="light" />
             <Stack.Screen
                 options={{
                     title: t('applicants') || 'Applicants',
@@ -573,6 +618,49 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.2,
         shadowRadius: 1,
+    },
+    candidateDetailsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 8,
+    },
+    candidateDetailChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F1F5F9',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        marginRight: 6,
+        marginBottom: 6,
+    },
+    candidateDetailText: {
+        fontSize: 11,
+        color: COLORS.text,
+        marginLeft: 4,
+        fontWeight: '500',
+    },
+    applicantLanguagesRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+        backgroundColor: '#F8FAFC',
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    applicantLanguagesLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    applicantLanguagesText: {
+        fontSize: 11,
+        color: COLORS.primary,
+        fontWeight: '500',
+        flex: 1,
     },
     actionButtons: {
         flexDirection: 'row',

@@ -20,22 +20,37 @@ import { useLanguage } from '../../context/LanguageContext';
 import PhotoCapture from './PhotoCapture';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
+const EndWorkModal = ({ visible, onClose, jobId, jobData: propJobData, onSuccess }) => {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const { showToast } = useToast();
     const { t } = useLanguage();
     const { socket, connected } = useSocket();
 
     const [loading, setLoading] = useState(true);
+    const [job, setJob] = useState(propJobData || null);
     const [workLog, setWorkLog] = useState(null);
     const [otp, setOtp] = useState('');
     const [otpRequested, setOtpRequested] = useState(false);
     const [otpVerified, setOtpVerified] = useState(false);
-    const [currentStep, setCurrentStep] = useState(1);
+    const [currentStep, setCurrentStep] = useState(
+        propJobData && !propJobData.otpVerificationRequired ? 3 : 1
+    );
 
     useEffect(() => {
         if (visible) {
+            setLoading(true);
+            if (propJobData) {
+                setJob(propJobData);
+                if (!propJobData.otpVerificationRequired) {
+                    setOtpVerified(true);
+                    setCurrentStep(3);
+                } else {
+                    setCurrentStep(1);
+                }
+            }
             fetchWorkLog();
         } else {
             // Reset state when modal closes
@@ -44,14 +59,20 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             setOtpVerified(false);
             setCurrentStep(1);
             setWorkLog(null);
+            setJob(null);
+            setLoading(true);
         }
-    }, [visible]);
+    }, [visible, propJobData]);
 
     const fetchWorkLog = async () => {
         setLoading(true);
         try {
-            const { getJobById } = require('../../services/jobService');
-            const jobData = await getJobById(jobId);
+            let jobData = propJobData;
+            if (!jobData && jobId) {
+                const { getJobById } = require('../../services/jobService');
+                jobData = await getJobById(jobId);
+                setJob(jobData);
+            }
 
             const data = await getWorkLogByJob(jobId);
             setWorkLog(data);
@@ -161,7 +182,7 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                 onClose();
             }, 1000);
         } catch (error) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Error);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             console.error('Error uploading end photo:', error);
             const errorMessage = error?.response?.data?.message || error?.message || t('failed_to_upload_photo') || 'Failed to upload photo';
             Alert.alert(t('error_title'), errorMessage);
@@ -188,7 +209,7 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
             onRequestClose={onClose}
         >
             <View style={styles.modalContainer}>
-                <View style={styles.modalHeader}>
+                <View style={[styles.modalHeader, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
                     <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                         <Ionicons name="close" size={24} color={COLORS.white} />
                     </TouchableOpacity>
@@ -287,9 +308,21 @@ const EndWorkModal = ({ visible, onClose, jobId, onSuccess }) => {
                         {currentStep === 3 && otpVerified && (
                             <View style={styles.stepContent}>
                                 <View style={styles.successCard}>
-                                    <Ionicons name="checkmark-circle" size={48} color={COLORS.success} />
-                                    <Text style={styles.successTitle}>{t('otp_verified_success')}</Text>
-                                    <Text style={styles.successText}>{t('capture_photo_end')}</Text>
+                                    <Ionicons
+                                        name={job?.otpVerificationRequired ? "checkmark-circle" : "camera"}
+                                        size={48}
+                                        color={COLORS.success}
+                                    />
+                                    <Text style={styles.successTitle}>
+                                        {job?.otpVerificationRequired
+                                            ? (t('otp_verified_success') || 'OTP Verified Successfully')
+                                            : (t('ready_to_end') || 'Ready to Complete Work')}
+                                    </Text>
+                                    <Text style={styles.successText}>
+                                        {job?.otpVerificationRequired
+                                            ? (t('capture_photo_end') || 'Please take a photo at the work location to complete work.')
+                                            : (t('capture_photo_end_direct') || 'Please take a photo at your work location to end today\'s work.')}
+                                    </Text>
                                 </View>
                                 <PhotoCapture type="end" onPhotoUploaded={handlePhotoUploaded} />
                             </View>

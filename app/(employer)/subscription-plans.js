@@ -73,6 +73,25 @@ export default function SubscriptionPlansScreen() {
 
         const selectedPlanData = plans.find(p => p.planKey === selectedPlan);
 
+        if (selectedPlan === 'free' || selectedPlanData?.price === 0) {
+            setPurchasing(true);
+            try {
+                await purchaseSubscription(selectedPlan);
+                Alert.alert(t('success') || 'Success', t('trial_activated_success') || 'Free trial activated successfully!');
+                await refreshSubscription();
+                setActiveTab('myplan');
+            } catch (err) {
+                console.error('Free trial activation error:', err);
+                Alert.alert(
+                    t('error') || 'Error',
+                    err.response?.data?.message || t('trial_activation_failed') || 'Failed to activate trial.'
+                );
+            } finally {
+                setPurchasing(false);
+            }
+            return;
+        }
+
         router.push({
             pathname: '/(employer)/payment',
             params: {

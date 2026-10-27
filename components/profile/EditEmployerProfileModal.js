@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -10,12 +10,17 @@ import {
     Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { COLORS, BUSINESS_TYPES, EMPLOYEE_COUNTS, INDIAN_STATES as STATES } from '../../constants/config';
 import { useLanguage } from '../../context/LanguageContext';
 import Button from '../ui/Button';
+import ChangeMobileModal from './ChangeMobileModal';
 
 export default function EditEmployerProfileModal({ visible, onClose, profile, onSave }) {
+    const insets = useSafeAreaInsets();
     const { t } = useLanguage();
+    const [showChangeMobileModal, setShowChangeMobileModal] = useState(false);
     const [formData, setFormData] = useState({
         name: profile?.name || '',
         companyName: profile?.companyName || '',
@@ -25,7 +30,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
             employeeCount: profile?.companyDetails?.employeeCount || '',
             website: profile?.companyDetails?.website || '',
             description: profile?.companyDetails?.description || '',
-            foundedYear: profile?.companyDetails?.foundedYear || '',
+            foundedYear: profile?.companyDetails?.foundedYear ? String(profile.companyDetails.foundedYear) : '',
             contactPerson: {
                 name: profile?.companyDetails?.contactPerson?.name || '',
                 designation: profile?.companyDetails?.contactPerson?.designation || '',
@@ -41,9 +46,42 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
         },
         mobile: profile?.mobile || '',
         gstNumber: profile?.gstNumber || '',
-        gender: profile?.gender || '',
+        gender: profile?.gender ? profile.gender.toLowerCase() : '',
         bio: profile?.bio || '',
     });
+
+    useEffect(() => {
+        if (visible && profile) {
+            setFormData({
+                name: profile.name || '',
+                companyName: profile.companyName || '',
+                email: profile.email || '',
+                businessType: profile.businessType || '',
+                companyDetails: {
+                    employeeCount: profile.companyDetails?.employeeCount || '',
+                    website: profile.companyDetails?.website || '',
+                    description: profile.companyDetails?.description || '',
+                    foundedYear: profile.companyDetails?.foundedYear ? String(profile.companyDetails.foundedYear) : '',
+                    contactPerson: {
+                        name: profile.companyDetails?.contactPerson?.name || '',
+                        designation: profile.companyDetails?.contactPerson?.designation || '',
+                        phone: profile.companyDetails?.contactPerson?.phone || '',
+                        email: profile.companyDetails?.contactPerson?.email || '',
+                    },
+                    address: {
+                        street: profile.companyDetails?.address?.street || '',
+                        city: profile.companyDetails?.address?.city || '',
+                        state: profile.companyDetails?.address?.state || '',
+                        pincode: profile.companyDetails?.address?.pincode || '',
+                    },
+                },
+                mobile: profile.mobile || '',
+                gstNumber: profile.gstNumber || '',
+                gender: profile.gender ? profile.gender.toLowerCase() : '',
+                bio: profile.bio || '',
+            });
+        }
+    }, [visible, profile]);
 
     const [saving, setSaving] = useState(false);
     const [dropdownVisible, setDropdownVisible] = useState(false);
@@ -70,25 +108,82 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
         }
 
         // Validate Contact Person Phone
-        const phone = formData.companyDetails?.contactPerson?.phone;
+        const phone = formData.companyDetails?.contactPerson?.phone?.trim();
         if (phone && !/^[6-9]\d{9}$/.test(phone)) {
-            Alert.alert(t('error_title'), t('valid_mobile_error'));
+            Alert.alert(t('error_title'), t('valid_mobile_error') || 'Invalid contact person mobile number');
             return;
         }
 
         // Validate Contact Person Email
-        const email = formData.companyDetails?.contactPerson?.email;
+        const email = formData.companyDetails?.contactPerson?.email?.trim();
         if (email && !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email)) {
             Alert.alert(t('error_title'), t('valid_email_error') || 'Invalid contact person email address');
             return;
         }
 
+        // Validate Founded Year if provided
+        const foundedYearRaw = formData.companyDetails?.foundedYear;
+        let cleanedFoundedYear = null;
+        if (foundedYearRaw !== '' && foundedYearRaw !== null && foundedYearRaw !== undefined) {
+            const yr = parseInt(foundedYearRaw, 10);
+            if (isNaN(yr) || yr < 1800 || yr > new Date().getFullYear()) {
+                Alert.alert(t('error_title'), 'Please enter a valid founded year (1800 - current year)');
+                return;
+            }
+            cleanedFoundedYear = yr;
+        }
+
+        // Validate Pincode if provided
+        const pincode = formData.companyDetails?.address?.pincode?.trim();
+        if (pincode && !/^\d{6}$/.test(pincode)) {
+            Alert.alert(t('error_title'), t('valid_pincode_error') || 'Enter valid 6-digit pincode');
+            return;
+        }
+
+        // Format gender: 'Male', 'Female', 'Other', or undefined
+        let capitalizedGender = undefined;
+        if (formData.gender) {
+            const g = formData.gender.trim().toLowerCase();
+            capitalizedGender = g.charAt(0).toUpperCase() + g.slice(1);
+        }
+
+        const cleanedData = {
+            name: formData.name.trim(),
+            companyName: formData.companyName.trim(),
+            email: formData.email.trim(),
+            businessType: formData.businessType,
+            gender: capitalizedGender,
+            bio: formData.bio ? formData.bio.trim() : '',
+            gstNumber: formData.gstNumber ? formData.gstNumber.trim().toUpperCase() : '',
+            companyDetails: {
+                ...formData.companyDetails,
+                foundedYear: cleanedFoundedYear,
+                employeeCount: formData.companyDetails.employeeCount,
+                website: formData.companyDetails.website?.trim() || '',
+                description: formData.companyDetails.description?.trim() || '',
+                contactPerson: {
+                    name: formData.companyDetails?.contactPerson?.name?.trim() || '',
+                    designation: formData.companyDetails?.contactPerson?.designation?.trim() || '',
+                    phone: phone || '',
+                    email: email || '',
+                },
+                address: {
+                    street: formData.companyDetails?.address?.street?.trim() || '',
+                    city: formData.companyDetails?.address?.city?.trim() || '',
+                    state: formData.companyDetails?.address?.state || '',
+                    pincode: pincode || '',
+                },
+            },
+        };
+
         setSaving(true);
         try {
-            await onSave(formData);
+            await onSave(cleanedData);
             onClose();
         } catch (error) {
-            Alert.alert(t('error_title'), t('profile_update_fail') || 'Failed to update profile');
+            console.error('Failed to update employer profile:', error);
+            const errorMsg = error?.response?.data?.message || error?.message || t('profile_update_fail') || 'Failed to update profile';
+            Alert.alert(t('error_title'), errorMsg);
         } finally {
             setSaving(false);
         }
@@ -112,16 +207,26 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
         <Modal
             visible={visible}
             animationType="slide"
-            presentationStyle="pageSheet"
+            presentationStyle="fullScreen"
             onRequestClose={onClose}
+            statusBarTranslucent={true}
         >
             <View style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={onClose}>
-                        <Ionicons name="close" size={28} color={COLORS.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>{t('edit_profile')}</Text>
-                    <View style={{ width: 28 }} />
+                <StatusBar style="light" backgroundColor={COLORS.primary || '#1976D2'} translucent={true} />
+
+                {/* Header with Safe Area Inset */}
+                <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
+                    <View style={styles.header}>
+                        <TouchableOpacity
+                            onPress={onClose}
+                            style={styles.headerButton}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons name="close" size={22} color="#FFFFFF" />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>{t('edit_profile')}</Text>
+                        <View style={{ width: 38 }} />
+                    </View>
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -150,6 +255,37 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                         />
                     </View>
 
+                    {/* Mobile */}
+                    <View style={styles.section}>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>{t('mobile')} *</Text>
+                            <View style={styles.verifiedBadge}>
+                                <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
+                                <Text style={styles.verifiedBadgeText}>{t('verified') || 'Verified'}</Text>
+                            </View>
+                        </View>
+                        <View style={styles.mobileContainer}>
+                            <TextInput
+                                style={[styles.input, styles.mobileInputDisabled]}
+                                value={formData.mobile}
+                                editable={false}
+                                placeholder={t('enter_mobile_placeholder')}
+                                placeholderTextColor={COLORS.textLight}
+                            />
+                            <TouchableOpacity
+                                style={styles.changeMobileButton}
+                                onPress={() => setShowChangeMobileModal(true)}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                                <Text style={styles.changeMobileButtonText}>{t('change') || 'Change'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.helperText}>
+                            {t('mobile_change_note') || 'To change your registered mobile number, OTP verification on the new SIM is required.'}
+                        </Text>
+                    </View>
+
                     <View style={styles.section}>
                         <Text style={styles.label}>{t('gender')}</Text>
                         <View style={styles.chipsContainer}>
@@ -158,14 +294,14 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                                     key={g}
                                     style={[
                                         styles.chip,
-                                        formData.gender === g && styles.chipActive,
+                                        formData.gender?.toLowerCase() === g && styles.chipActive,
                                     ]}
                                     onPress={() => setFormData({ ...formData, gender: g })}
                                 >
                                     <Text
                                         style={[
                                             styles.chipText,
-                                            formData.gender === g && styles.chipTextActive,
+                                            formData.gender?.toLowerCase() === g && styles.chipTextActive,
                                         ]}
                                     >
                                         {t(`${g}`)}
@@ -198,19 +334,6 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                             placeholderTextColor={COLORS.textLight}
                             keyboardType="email-address"
                             autoCapitalize="none"
-                        />
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={styles.label}>{t('mobile')}</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={formData.mobile}
-                            onChangeText={(text) => setFormData({ ...formData, mobile: text })}
-                            placeholder={t('mobile_placeholder')}
-                            placeholderTextColor={COLORS.textLight}
-                            keyboardType="phone-pad"
-                            maxLength={10}
                         />
                     </View>
 
@@ -400,7 +523,7 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                     </View>
                 </ScrollView>
 
-                <View style={styles.footer}>
+                <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                     <Button
                         title={saving ? t('saving') : t('save_changes')}
                         onPress={handleSave}
@@ -455,6 +578,16 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
                         </View>
                     </TouchableOpacity>
                 </Modal>
+
+                {/* Change Mobile Number with OTP Verification Modal */}
+                <ChangeMobileModal
+                    visible={showChangeMobileModal}
+                    onClose={() => setShowChangeMobileModal(false)}
+                    currentMobile={formData.mobile}
+                    onSuccess={(newMobileNum) => {
+                        setFormData((prev) => ({ ...prev, mobile: newMobileNum }));
+                    }}
+                />
             </View>
         </Modal>
     );
@@ -463,21 +596,37 @@ export default function EditEmployerProfileModal({ visible, onClose, profile, on
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: COLORS.background || '#F8FAFC',
+    },
+    headerContainer: {
+        backgroundColor: COLORS.primary || '#1976D2',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 3,
     },
     header: {
+        height: 56,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 16,
-        backgroundColor: COLORS.white,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
+        paddingHorizontal: 16,
+    },
+    headerButton: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
     },
     headerTitle: {
         fontSize: 18,
         fontWeight: '700',
-        color: COLORS.text,
+        color: '#FFFFFF',
     },
     content: {
         flex: 1,
@@ -556,6 +705,60 @@ const styles = StyleSheet.create({
     },
     chipTextActive: {
         color: COLORS.white,
+    },
+    labelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    verifiedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#DCFCE7',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        gap: 4,
+    },
+    verifiedBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#15803D',
+    },
+    mobileContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 6,
+    },
+    mobileInputDisabled: {
+        backgroundColor: '#F1F5F9',
+        color: COLORS.text,
+        fontWeight: '600',
+    },
+    changeMobileButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EFF6FF',
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+        borderRadius: 12,
+        gap: 4,
+    },
+    changeMobileButtonText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: COLORS.primary || '#1976D2',
+    },
+    helperText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        marginBottom: 12,
+        marginTop: 2,
+        lineHeight: 16,
     },
     footer: {
         padding: 16,

@@ -194,6 +194,9 @@ export default function PostJobScreen() {
             newErrors.durationDays = t('validation_duration_req');
         }
         if (formData.workerType.length === 0) newErrors.workerType = t('validation_worker_type_req');
+        if (!formData.totalOpenings || isNaN(formData.totalOpenings) || Number(formData.totalOpenings) < 1) {
+            newErrors.totalOpenings = 'Total openings must be at least 1';
+        }
 
         if (formData.minExperience && isNaN(formData.minExperience)) newErrors.minExperience = 'Must be a number';
         if (formData.maxExperience && isNaN(formData.maxExperience)) newErrors.maxExperience = 'Must be a number';
@@ -283,7 +286,7 @@ export default function PostJobScreen() {
     }
     return (
         <SafeAreaView style={styles.container}>
-            <Stack.Screen options={{ title: isEditing ? t('edit_job_location') : t('post_new_job') }} />
+            <Stack.Screen options={{ title: isEditing ? (t('edit_job') || t('edit_job_location')) : t('post_new_job') }} />
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1 }}
@@ -415,7 +418,6 @@ export default function PostJobScreen() {
                             error={errors.description}
                             multiline
                             numberOfLines={4}
-                            editable={!isEditing}
                         />
 
                         {/* Worker Type Selection */}
@@ -460,33 +462,6 @@ export default function PostJobScreen() {
                             </TouchableOpacity>
                         </View>
 
-                        <Input
-                            label={t('daily_salary_label')}
-                            placeholder="e.g., 500"
-                            value={formData.salary}
-                            onChangeText={(text) => setFormData({ ...formData, salary: text.replace(/[^0-9]/g, '') })}
-                            keyboardType="numeric"
-                            error={errors.salary}
-                            editable={!isEditing}
-                        />
-
-                        <LocationPicker
-                            label={t('location')}
-                            placeholder="e.g., Kolkata, West Bengal"
-                            value={formData.location}
-                            onChangeLocation={(text, coords, place) => {
-                                setFormData({
-                                    ...formData,
-                                    location: text,
-                                    city: place?.city || '',
-                                    state: place?.state || '',
-                                    coordinates: coords || null
-                                });
-                                setErrors({ ...errors, location: '' });
-                            }}
-                            error={errors.location}
-                        />
-
                         {/* Work Type */}
                         <View style={[styles.fieldContainer, isEditing && { opacity: 0.7 }]}>
                             <Text style={styles.label}>{t('job_type')}</Text>
@@ -506,6 +481,15 @@ export default function PostJobScreen() {
                             </View>
                         </View>
 
+                        <Input
+                            label={formData.workType === 'permanent' ? (t('monthly_salary_label') || 'Monthly Salary (₹)') : (t('daily_salary_label') || 'Daily Salary (₹)')}
+                            placeholder={formData.workType === 'permanent' ? "e.g., 15000" : "e.g., 500"}
+                            value={formData.salary}
+                            onChangeText={(text) => setFormData({ ...formData, salary: text.replace(/[^0-9]/g, '') })}
+                            keyboardType="numeric"
+                            error={errors.salary}
+                        />
+
                         {formData.workType === 'temporary' && (
                             <Input
                                 label={t('duration_days_label')}
@@ -518,13 +502,34 @@ export default function PostJobScreen() {
                             />
                         )}
 
+                        <LocationPicker
+                            label={t('location')}
+                            placeholder="e.g., Kolkata, West Bengal"
+                            value={formData.location}
+                            onChangeLocation={(text, coords, place) => {
+                                const parts = text ? text.split(',').map(p => p.trim()).filter(Boolean) : [];
+                                const detectedCity = place?.city || (parts.length > 0 ? parts[0] : '');
+                                const detectedState = place?.state || (parts.length > 1 ? parts[1] : '');
+
+                                setFormData({
+                                    ...formData,
+                                    location: text,
+                                    city: detectedCity,
+                                    state: detectedState,
+                                    coordinates: coords || null
+                                });
+                                setErrors({ ...errors, location: '' });
+                            }}
+                            error={errors.location}
+                        />
+
                         <Input
                             label={t('total_openings_label')}
                             placeholder="e.g., 1"
                             value={formData.totalOpenings}
                             onChangeText={(text) => setFormData({ ...formData, totalOpenings: text.replace(/[^0-9]/g, '') })}
                             keyboardType="numeric"
-                            editable={!isEditing}
+                            error={errors.totalOpenings}
                         />
 
                         {/* Experience Range */}
@@ -554,11 +559,10 @@ export default function PostJobScreen() {
                         </View>
 
                         {/* Verification & Geo-tagging Options */}
-                        <View style={[styles.checkboxContainer, isEditing && { opacity: 0.7 }]}>
+                        <View style={styles.checkboxContainer}>
                             <TouchableOpacity
                                 style={styles.checkboxRow}
-                                onPress={() => !isEditing && setFormData({ ...formData, otpVerificationRequired: !formData.otpVerificationRequired })}
-                                disabled={isEditing}
+                                onPress={() => setFormData({ ...formData, otpVerificationRequired: !formData.otpVerificationRequired })}
                             >
                                 <View style={[styles.checkbox, formData.otpVerificationRequired && styles.checkboxChecked]}>
                                     {formData.otpVerificationRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
@@ -568,8 +572,7 @@ export default function PostJobScreen() {
 
                             <TouchableOpacity
                                 style={styles.checkboxRow}
-                                onPress={() => !isEditing && setFormData({ ...formData, geoTaggingRequired: !formData.geoTaggingRequired })}
-                                disabled={isEditing}
+                                onPress={() => setFormData({ ...formData, geoTaggingRequired: !formData.geoTaggingRequired })}
                             >
                                 <View style={[styles.checkbox, formData.geoTaggingRequired && styles.checkboxChecked]}>
                                     {formData.geoTaggingRequired && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
@@ -580,7 +583,7 @@ export default function PostJobScreen() {
                     </Card>
 
                     <Button
-                        title={isEditing ? t('update_job_location') : t('post_job')}
+                        title={isEditing ? (t('update_job') || t('update_job_location')) : t('post_job')}
                         onPress={handleSubmit}
                         loading={loading}
                         style={styles.submitButton}

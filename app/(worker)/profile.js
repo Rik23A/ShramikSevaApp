@@ -11,7 +11,7 @@ import {
     Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, Stack, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS, API_URL, WEB_URL } from '../../constants/config';
 import { translations, LANGUAGES } from '../../constants/translations';
@@ -28,8 +28,12 @@ import DocumentUploadSection from '../../components/profile/DocumentUploadSectio
 import LanguageSelectionModal from '../../components/profile/LanguageSelectionModal';
 import AvailabilityModal from '../../components/profile/AvailabilityModal';
 import ChangePasswordModal from '../../components/profile/ChangePasswordModal';
+import ProfileChecklistCard from '../../components/ProfileChecklistCard';
+import { useUpdate } from '../../context/UpdateContext';
+import { getCurrentAppVersion } from '../../services/updateService';
 
 export default function ProfileScreen() {
+    const navigation = useNavigation();
     const { user, logout, updateUser, refreshProfile } = useAuth();
     const { t, locale, changeLanguage } = useLanguage();
     const [profile, setProfile] = useState(null);
@@ -39,6 +43,23 @@ export default function ProfileScreen() {
     const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const { checkForUpdates } = useUpdate();
+    const appVersionInfo = getCurrentAppVersion();
+
+    // Set custom headerRight button for the Profile tab in the Tabs navigator
+    useEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={() => setShowLangModal(true)}
+                    style={styles.headerLangButton}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="language" size={22} color={COLORS.white} />
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation, locale]);
 
     useFocusEffect(
         useCallback(() => {
@@ -111,9 +132,13 @@ export default function ProfileScreen() {
             // Update profile with new image URL
             await updateProfile({ profilePicture: uploadResult.fileUrl });
 
-            // Update local state
-            setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
-            updateUser({ profilePicture: uploadResult.fileUrl });
+            if (refreshProfile) {
+                const fresh = await refreshProfile();
+                if (fresh) setProfile(fresh);
+            } else {
+                setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
+                updateUser({ profilePicture: uploadResult.fileUrl });
+            }
         } catch (error) {
             console.error('Failed to upload image:', error);
             Alert.alert(t('error'), t('failed_to_upload_photo'));
@@ -125,8 +150,13 @@ export default function ProfileScreen() {
     const handleSaveProfile = async (updatedData) => {
         try {
             await updateProfile(updatedData);
-            setProfile({ ...profile, ...updatedData });
-            updateUser(updatedData);
+            if (refreshProfile) {
+                const fresh = await refreshProfile();
+                if (fresh) setProfile(fresh);
+            } else {
+                setProfile({ ...profile, ...updatedData });
+                updateUser(updatedData);
+            }
             Alert.alert(t('success'), t('profile_updated_success') || 'Profile updated successfully');
         } catch (error) {
             throw error;
@@ -154,21 +184,6 @@ export default function ProfileScreen() {
 
     return (
         <View style={styles.container}>
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    title: t('my_profile'),
-                    headerStyle: { backgroundColor: COLORS.primary },
-                    headerTintColor: COLORS.white,
-                    headerShadowVisible: false,
-                    headerRight: () => (
-                        <TouchableOpacity onPress={() => setShowLangModal(true)} style={{ marginRight: 10 }}>
-                            <Ionicons name="language" size={24} color={COLORS.white} />
-                        </TouchableOpacity>
-                    ),
-                }}
-            />
-
             <ScrollView
                 style={styles.container}
                 contentContainerStyle={styles.contentContainer}
@@ -228,13 +243,16 @@ export default function ProfileScreen() {
                         </View>
                     </View>
 
-                    {/* Bio Section */}
-                    {profile?.bio && (
-                        <View style={styles.sectionContainer}>
-                            <Text style={styles.sectionHeader}>{t('about_me')}</Text>
-                            <Text style={styles.bioText}>{profile.bio}</Text>
+                    {/* Bio / About Me Section */}
+                    {profile?.bio ? (
+                        <View style={styles.bioCardContainer}>
+                            <View style={styles.bioHeaderRow}>
+                                <Ionicons name="person-outline" size={15} color={COLORS.primary} />
+                                <Text style={styles.bioCardTitle}>{t('about_me') || 'About Me'}</Text>
+                            </View>
+                            <Text style={styles.bioContentText}>{profile.bio}</Text>
                         </View>
-                    )}
+                    ) : null}
                     {/* Edit Profile Button */}
                     <TouchableOpacity
                         style={styles.editButton}
@@ -375,7 +393,7 @@ export default function ProfileScreen() {
                             </View>
                             <View style={styles.menuContent}>
                                 <Text style={styles.menuValue}>
-                                    {profile?.isFresher ? t('fresher') : t('yrs_exp', { exp: profile?.experience || 0 })}
+                                    {profile?.isFresher || !profile?.experience || Number(profile?.experience) === 0 ? t('fresher') : t('yrs_exp', { exp: profile?.experience })}
                                 </Text>
                             </View>
                         </View>
@@ -383,26 +401,59 @@ export default function ProfileScreen() {
                 </View>
 
                 {/* Document Upload Section */}
-                <DocumentUploadSection />
+                <DocumentUploadSection onDocumentUploaded={() => fetchProfile()} />
 
-                {/* Profile Completion Prompt */}
-                {!profile?.isProfileComplete && (
-                    <TouchableOpacity
-                        style={styles.alertCard}
-                        onPress={() => setShowEditModal(true)}
-                    >
-                        <View style={styles.alertContent}>
-                            <Ionicons name="create" size={24} color={COLORS.warning} />
-                            <View style={styles.alertTextContainer}>
-                                <Text style={styles.alertTitle}>{t('complete_profile')}</Text>
-                                <Text style={styles.alertSubtitle}>{t('complete_profile_sub')}</Text>
+                {/* Profile Completion Status & Checklist Card */}
+                <ProfileChecklistCard
+                    user={profile}
+                    onEditPress={() => setShowEditModal(true)}
+                    style={{ marginHorizontal: 20, marginBottom: 15 }}
+                />
+
+                {/* Settings & Preferences Section */}
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionHeader}>{t('settings') || 'Settings & Preferences'}</Text>
+                    <View style={styles.menuCard}>
+                        <TouchableOpacity
+                            style={[styles.menuItem, { borderBottomWidth: 0 }]}
+                            onPress={() => setShowLangModal(true)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: '#E0F2FE' }]}>
+                                <Ionicons name="language" size={20} color="#0284C7" />
                             </View>
-                            <Ionicons name="chevron-forward" size={20} color={COLORS.warning} />
-                        </View>
-                    </TouchableOpacity>
-                )}
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuLabel}>{t('change_language') || 'Language'}</Text>
+                                <Text style={styles.menuValue}>
+                                    {(LANGUAGES || []).find(l => l.code === locale)?.label || 'English'} ({(LANGUAGES || []).find(l => l.code === locale)?.native || 'English'})
+                                </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
 
                 <View style={styles.actions}>
+                    <Button
+                        title={t('check_for_updates') || "Check for App Updates"}
+                        onPress={async () => {
+                            const res = await checkForUpdates();
+                            if (res && !res.updateAvailable) {
+                                Alert.alert(
+                                    t('up_to_date') || 'Up to Date 🎉',
+                                    t('up_to_date_msg') || `You are using the latest version of Shramik Seva (v${appVersionInfo.version}).`,
+                                    [{ text: t('ok') || 'OK' }]
+                                );
+                            } else if (!res) {
+                                Alert.alert(
+                                    t('notice') || 'Notice',
+                                    t('update_check_failed') || 'Could not check for updates. Please check your internet connection.',
+                                    [{ text: t('ok') || 'OK' }]
+                                );
+                            }
+                        }}
+                        style={[styles.helpButton, { backgroundColor: '#2E7D32', marginBottom: 10 }]}
+                    />
                     <Button
                         title={t('change_password')}
                         onPress={() => setShowPasswordModal(true)}
@@ -413,6 +464,12 @@ export default function ProfileScreen() {
                         onPress={handleLogout}
                         style={styles.logoutButton}
                     />
+                </View>
+
+                <View style={{ alignItems: 'center', marginVertical: 16 }}>
+                    <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
+                        Shramik Seva v{appVersionInfo.version} ({appVersionInfo.platform})
+                    </Text>
                 </View>
             </ScrollView>
 
@@ -604,18 +661,33 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         marginLeft: 4,
     },
-    bioText: {
-        fontSize: 15,
+    bioCardContainer: {
+        width: '100%',
+        marginTop: 16,
+        padding: 14,
+        backgroundColor: '#F8FAFC',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    bioHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 6,
+    },
+    bioCardTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.primary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    bioContentText: {
+        fontSize: 14,
         color: COLORS.text,
-        lineHeight: 22,
-        backgroundColor: COLORS.white,
-        padding: 16,
-        borderRadius: 16,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        lineHeight: 21,
+        textAlign: 'left',
     },
     menuCard: {
         backgroundColor: COLORS.white,
@@ -772,5 +844,14 @@ const styles = StyleSheet.create({
     selectedLangText: {
         color: COLORS.primary,
         fontWeight: '600',
+    },
+    headerLangButton: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
     },
 });

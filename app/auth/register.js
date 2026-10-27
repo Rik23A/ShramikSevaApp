@@ -9,11 +9,13 @@ import {
     Alert,
     TouchableOpacity,
     Animated,
-    Dimensions,
     Modal,
     FlatList,
     TouchableWithoutFeedback,
-    Image
+    Image,
+    ActivityIndicator,
+    useWindowDimensions,
+    TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -23,29 +25,39 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import OtpInput from '../../components/OtpInput';
+import LocationPicker from '../../components/LocationPicker';
+import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
+import { uploadFile } from '../../services/uploadService';
 import {
     COLORS,
     WORKER_TYPES,
     INDIAN_STATES,
     BUSINESS_TYPES,
     EMPLOYEE_COUNTS,
-    WORKER_SKILLS
+    WORKER_SKILLS,
+    QUALIFICATIONS,
+    KNOWN_LANGUAGES
 } from '../../constants/config';
 import { initiateRegistration, completeRegistration, checkMobile } from '../../services/authService';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 
-const { width, height } = Dimensions.get('window');
-
 export default function RegisterScreen() {
     const { role } = useLocalSearchParams();
     const { t } = useLanguage();
     const { login } = useAuth();
+    const { width, height } = useWindowDimensions();
+
+    const isSmallScreen = width < 375;
+    const isTablet = width >= 600;
+    const contentHorizontalPadding = isSmallScreen ? 14 : isTablet ? 28 : 18;
+    const cardPadding = isSmallScreen ? 14 : 18;
 
     const totalSteps = role === 'employer' ? 6 : 3;
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [otp, setOtp] = useState('');
     const [errors, setErrors] = useState({});
 
@@ -77,13 +89,21 @@ export default function RegisterScreen() {
         email: '',
         password: '',
         confirmPassword: '',
+        profilePicture: '',
         role: role || 'worker',
         workerType: '', // Single select
         skills: [],     // Multi select
         experience: '',
         isFresher: false,
         gender: '',
+        age: '',
+        qualification: '',
+        languages: [],
+        expectedSalaryMin: '',
+        expectedSalaryMax: '',
+        expectedSalaryPeriod: 'monthly',
         locationName: '',
+        coordinates: null,
         companyName: '',
         businessType: '',
         employeeCount: '',
@@ -104,6 +124,7 @@ export default function RegisterScreen() {
 
     // Modal Dropdown State
     const [dropdownVisible, setDropdownVisible] = useState(false);
+    const [dropdownSearch, setDropdownSearch] = useState('');
     const [dropdownConfig, setDropdownConfig] = useState({
         items: [],
         title: '',
@@ -111,10 +132,37 @@ export default function RegisterScreen() {
         multiSelect: false
     });
 
+    const handleAvatarSelected = async (imageAsset) => {
+        if (!imageAsset || !imageAsset.uri) return;
+        setUploadingAvatar(true);
+        try {
+            const uploadResult = await uploadFile(imageAsset);
+            if (uploadResult && uploadResult.fileUrl) {
+                setFormData((prev) => ({ ...prev, profilePicture: uploadResult.fileUrl }));
+                Alert.alert(t('success') || 'Success', t('photo_uploaded') || 'Profile photo uploaded successfully!');
+            } else {
+                Alert.alert(t('error_title') || 'Error', t('failed_to_upload_photo') || 'Failed to upload photo.');
+            }
+        } catch (error) {
+            console.error('Failed to upload profile photo:', error);
+            Alert.alert(
+                t('error_title') || 'Error',
+                error?.response?.data?.message || t('failed_to_upload_photo') || 'Failed to upload photo. Please try again.'
+            );
+        } finally {
+            setUploadingAvatar(false);
+        }
+    };
+
     const openDropdown = (key, title, items, multiSelect = false) => {
+        setDropdownSearch('');
         setDropdownConfig({ key, title, items, multiSelect });
         setDropdownVisible(true);
     };
+
+    const filteredDropdownItems = (dropdownConfig.items || []).filter(item =>
+        !dropdownSearch.trim() || item.toLowerCase().includes(dropdownSearch.trim().toLowerCase())
+    );
 
     const handleSelect = (item) => {
         const { key, multiSelect } = dropdownConfig;
@@ -165,11 +213,33 @@ export default function RegisterScreen() {
             }
         } else if (currentStep === 2 && role === 'worker') {
             if (!formData.gender) newErrors.gender = t('gender_required') || 'Gender is required';
+            const ageNum = parseInt(formData.age);
+            if (!formData.age || isNaN(ageNum) || ageNum < 14 || ageNum > 100) {
+                newErrors.age = t('age_required') || 'Age is required (14-100)';
+            }
+            if (!formData.qualification || !formData.qualification.trim()) {
+                newErrors.qualification = t('qualification_required') || 'Education / Qualification is required';
+            }
+            if (!formData.languages || formData.languages.length === 0) {
+                newErrors.languages = t('languages_required') || 'Select at least one language known';
+            }
             if (!formData.workerType) {
                 newErrors.workerType = t('worker_type_required') || 'Select work type';
             }
             if (!formData.isFresher && !formData.experience) {
                 newErrors.experience = t('experience_required') || 'Experience is required';
+            }
+            if (!formData.locationName || !formData.locationName.trim()) {
+                newErrors.locationName = t('city_state_required') || 'City/State is required';
+            }
+            if (!formData.expectedSalaryMin || isNaN(parseFloat(formData.expectedSalaryMin)) || parseFloat(formData.expectedSalaryMin) <= 0) {
+                newErrors.expectedSalary = t('expected_salary_required') || 'Minimum expected salary is required';
+            } else if (formData.expectedSalaryMin && formData.expectedSalaryMax) {
+                const min = parseFloat(formData.expectedSalaryMin);
+                const max = parseFloat(formData.expectedSalaryMax);
+                if (max < min) {
+                    newErrors.expectedSalary = t('max_salary_error') || 'Maximum salary must be greater than or equal to minimum salary';
+                }
             }
         } else if (currentStep === 2 && role === 'employer') {
             if (!formData.companyName.trim()) newErrors.companyName = t('company_name_required') || 'Company Name is required';
@@ -216,15 +286,46 @@ export default function RegisterScreen() {
                 setLoading(true);
                 try {
                     const submissionData = { ...formData };
+                    if (!submissionData.profilePicture) {
+                        delete submissionData.profilePicture;
+                    }
 
                     // Format for backend
                     if (role === 'worker') {
                         // Ensure workerType is array if backend expects it
-                        // But wait, if backend expects array, we should wrap it.
-                        // Assuming backend handles array or string, but typically arrays for types.
-                        // Let's wrap it to be safe if it's a string
                         if (typeof submissionData.workerType === 'string') {
                             submissionData.workerType = [submissionData.workerType];
+                        }
+                        if (formData.coordinates) {
+                            submissionData.location = {
+                                type: 'Point',
+                                coordinates: [formData.coordinates.longitude, formData.coordinates.latitude]
+                            };
+                        }
+
+                        let workerCity = formData.city || '';
+                        let workerState = formData.state || '';
+                        if (!workerCity && formData.locationName) {
+                            const parts = formData.locationName.split(',').map(p => p.trim()).filter(Boolean);
+                            if (parts.length >= 1) workerCity = parts[0];
+                            if (parts.length >= 2 && !workerState) workerState = parts[1];
+                        }
+
+                        submissionData.locationName = formData.locationName;
+                        submissionData.city = workerCity;
+                        submissionData.state = workerState;
+
+                        if (formData.qualification) submissionData.qualification = formData.qualification;
+                        if (formData.age) submissionData.age = parseInt(formData.age);
+                        if (formData.languages && formData.languages.length > 0) submissionData.languages = formData.languages;
+
+                        if (formData.expectedSalaryMin || formData.expectedSalaryMax) {
+                            submissionData.expectedSalary = {
+                                min: parseFloat(formData.expectedSalaryMin) || 0,
+                                max: parseFloat(formData.expectedSalaryMax) || 0,
+                                currency: 'INR',
+                                period: formData.expectedSalaryPeriod || 'monthly'
+                            };
                         }
                     }
 
@@ -293,28 +394,90 @@ export default function RegisterScreen() {
         }
     };
 
-    const renderDropdownTrigger = (label, value, items, key, error, multiSelect = false) => (
-        <View style={styles.dropdownContainer}>
-            <Text style={styles.label}>{label}</Text>
-            <TouchableOpacity
-                style={[styles.dropdownButton, error && styles.inputError]}
-                onPress={() => openDropdown(key, label.replace('*', '').trim(), items, multiSelect)}
-            >
-                <Text style={[styles.dropdownText, (!value || (Array.isArray(value) && value.length === 0)) && styles.placeholderText]} numberOfLines={1}>
-                    {Array.isArray(value)
-                        ? (value.length > 0 ? value.join(', ') : `Select ${label.replace('*', '').trim()}`)
-                        : (value || `Select ${label.replace('*', '').trim()}`)}
-                </Text>
-                <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-            {error && <Text style={styles.errorText}>{error}</Text>}
-        </View>
-    );
+    const renderDropdownTrigger = (label, value, items, key, error, multiSelect = false) => {
+        const isArrayVal = Array.isArray(value);
+        const hasSelection = isArrayVal ? value.length > 0 : !!value;
+        const displayText = isArrayVal
+            ? (value.length > 0 ? `${value.length} ${t('selected') || 'selected'}: ${value.slice(0, 2).join(', ')}${value.length > 2 ? '...' : ''}` : `Select ${label.replace('*', '').trim()}`)
+            : (value || `Select ${label.replace('*', '').trim()}`);
+
+        return (
+            <View style={styles.dropdownContainer}>
+                <Text style={styles.label}>{label}</Text>
+                <TouchableOpacity
+                    style={[
+                        styles.dropdownButton,
+                        hasSelection && styles.dropdownButtonSelected,
+                        error && styles.inputError
+                    ]}
+                    onPress={() => openDropdown(key, label.replace('*', '').trim(), items, multiSelect)}
+                    activeOpacity={0.7}
+                >
+                    <Text style={[styles.dropdownText, !hasSelection && styles.placeholderText]} numberOfLines={1}>
+                        {displayText}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color={hasSelection ? COLORS.primary : COLORS.textSecondary} />
+                </TouchableOpacity>
+                {error && <Text style={styles.errorText}>{error}</Text>}
+            </View>
+        );
+    };
 
     const renderStep1 = () => (
-        <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>{t('basic_details')}</Text>
-            <Input label={`${t('full_name')} *`} placeholder={t('enter_full_name')} value={formData.name} onChangeText={(text) => setFormData({ ...formData, name: text })} error={errors.name} icon="person-outline" />
+        <View style={[styles.formSection, { padding: cardPadding }]}>
+            <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionIconBadge}>
+                    <Ionicons name="person" size={18} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.sectionTitle}>{t('basic_details') || 'Basic Details'}</Text>
+                    <Text style={styles.sectionCaption}>
+                        {role === 'worker' ? (t('worker_basic_desc') || 'Personal and login details for job opportunities') : (t('employer_basic_desc') || 'Company administrator details')}
+                    </Text>
+                </View>
+            </View>
+
+            {/* Profile Picture Upload */}
+            <View style={styles.avatarSection}>
+                <ProfileImagePicker
+                    imageUri={formData.profilePicture}
+                    onImageSelected={handleAvatarSelected}
+                    size={isSmallScreen ? 86 : 96}
+                    editable={!uploadingAvatar}
+                />
+                {uploadingAvatar ? (
+                    <View style={styles.avatarUploadingRow}>
+                        <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 6 }} />
+                        <Text style={styles.avatarUploadingText}>
+                            {t('uploading') || 'Uploading photo...'}
+                        </Text>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {/* ProfileImagePicker triggers on tap */}}
+                        style={{ marginTop: 8 }}
+                    >
+                        <Text style={styles.avatarActionText}>
+                            {formData.profilePicture ? (t('change_photo') || 'Change Profile Photo') : (t('add_profile_photo') || 'Add Profile Photo')}
+                        </Text>
+                    </TouchableOpacity>
+                )}
+                {formData.profilePicture && !uploadingAvatar ? (
+                    <TouchableOpacity
+                        onPress={() => setFormData((prev) => ({ ...prev, profilePicture: '' }))}
+                        style={styles.avatarRemoveBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                    >
+                        <Ionicons name="trash-outline" size={13} color={COLORS.error || '#EF4444'} style={{ marginRight: 4 }} />
+                        <Text style={styles.avatarRemoveText}>
+                            {t('remove_photo') || 'Remove Photo'}
+                        </Text>
+                    </TouchableOpacity>
+                ) : null}
+            </View>
+
+            <Input label={`${t('full_name')} *`} placeholder={t('enter_full_name')} value={formData.name} onChangeText={(text) => setFormData({ ...formData, name: text })} error={errors.name} icon="person-outline" autoCapitalize="words" />
             <Input label={`${t('mobile')} *`} placeholder={t('mobile_placeholder')} value={formData.mobile} onChangeText={(text) => setFormData({ ...formData, mobile: text.replace(/[^0-9]/g, '').slice(0, 10) })} keyboardType="phone-pad" error={errors.mobile} maxLength={10} icon="call-outline" />
             <Input label={role === 'employer' ? `${t('email')} *` : `${t('email')} (${t('optional') || 'Optional'})`} placeholder={t('enter_email_address')} value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} keyboardType="email-address" error={errors.email} autoCapitalize="none" icon="mail-outline" />
             <Input label={role === 'employer' ? `${t('enter_password')} *` : `${t('enter_password')} (${t('optional') || 'Optional'})`} placeholder={t('create_password') || 'Create password'} value={formData.password} onChangeText={(text) => setFormData({ ...formData, password: text })} isPassword error={errors.password} icon="lock-closed-outline" />
@@ -323,31 +486,373 @@ export default function RegisterScreen() {
     );
 
     const renderWorkerProfessional = () => {
-        // Get skills based on selected worker type
-        // Ensure items is an array
         const skillList = formData.workerType ? (WORKER_SKILLS[formData.workerType] || []) : [];
 
         return (
-            <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>{t('professional_details')}</Text>
-                {renderDropdownTrigger(`${t('gender')} *`, formData.gender, [t('gender_male'), t('gender_female'), t('gender_other')], 'gender', errors.gender)}
+            <View style={[styles.formSection, { padding: cardPadding }]}>
+                <View style={styles.sectionHeaderRow}>
+                    <View style={styles.sectionIconBadge}>
+                        <Ionicons name="briefcase" size={18} color={COLORS.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.sectionTitle}>{t('professional_details') || 'Professional Details'}</Text>
+                        <Text style={styles.sectionCaption}>
+                            {t('worker_prof_desc') || 'Your job match will be based on your work type and location'}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Gender Selector - Responsive Pill Group */}
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>{`${t('gender')} *`}</Text>
+                    <View style={styles.genderRow}>
+                        {[
+                            { key: 'Male', label: t('gender_male') || 'Male', icon: 'man' },
+                            { key: 'Female', label: t('gender_female') || 'Female', icon: 'woman' },
+                            { key: 'Other', label: t('gender_other') || 'Other', icon: 'person' },
+                        ].map((g) => {
+                            const isSelected = formData.gender === g.key;
+                            return (
+                                <TouchableOpacity
+                                    key={g.key}
+                                    style={[
+                                        styles.genderPill,
+                                        isSelected && styles.genderPillActive,
+                                        errors.gender && !formData.gender && styles.inputError,
+                                        {
+                                            paddingVertical: isSmallScreen ? 8 : 10,
+                                            paddingHorizontal: isSmallScreen ? 4 : 8
+                                        }
+                                    ]}
+                                    onPress={() => {
+                                        setFormData((prev) => ({ ...prev, gender: g.key }));
+                                        if (errors.gender) setErrors((prev) => ({ ...prev, gender: '' }));
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons
+                                        name={isSelected ? g.icon : `${g.icon}-outline`}
+                                        size={isSmallScreen ? 15 : 17}
+                                        color={isSelected ? COLORS.white : COLORS.textSecondary}
+                                        style={{ marginRight: isSmallScreen ? 3 : 5 }}
+                                    />
+                                    <Text
+                                        style={[
+                                            styles.genderPillText,
+                                            isSelected && styles.genderPillTextActive,
+                                            { fontSize: isSmallScreen ? 12 : 13 }
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {g.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                    {errors.gender && <Text style={styles.errorText}>{errors.gender}</Text>}
+                </View>
+
+                {/* Age Input */}
+                <Input
+                    label={`${t('age') || 'Age (Years)'} *`}
+                    placeholder="e.g. 24"
+                    value={formData.age}
+                    onChangeText={(text) => {
+                        setFormData({ ...formData, age: text.replace(/[^0-9]/g, '') });
+                        if (errors.age) setErrors((prev) => ({ ...prev, age: '' }));
+                    }}
+                    keyboardType="numeric"
+                    maxLength={2}
+                    icon="person-outline"
+                    error={errors.age}
+                />
+
+                {/* Qualification / Education - Single Select */}
+                {renderDropdownTrigger(
+                    `${t('education_qualification') || t('qualification') || 'Education / Qualification'} *`,
+                    formData.qualification,
+                    QUALIFICATIONS,
+                    'qualification',
+                    errors.qualification,
+                    false
+                )}
+
+                {/* Languages Known - Multi Select */}
+                <View style={styles.inputGroup}>
+                    {renderDropdownTrigger(
+                        `${t('languages_known') || 'Languages Known'} * ${formData.languages?.length > 0 ? `(${formData.languages.length} ${t('selected') || 'selected'})` : ''}`,
+                        formData.languages,
+                        KNOWN_LANGUAGES,
+                        'languages',
+                        errors.languages,
+                        true
+                    )}
+
+                    {/* Selected Languages Chips */}
+                    {formData.languages && formData.languages.length > 0 && (
+                        <View style={styles.selectedSkillsWrapper}>
+                            {formData.languages.map((lang, idx) => (
+                                <View key={idx} style={[styles.skillTag, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
+                                    <Text style={[styles.skillTagText, { color: COLORS.primary }]} numberOfLines={1}>{lang}</Text>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                languages: (prev.languages || []).filter(l => l !== lang)
+                                            }));
+                                        }}
+                                        style={styles.skillTagRemove}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Ionicons name="close-circle" size={16} color={COLORS.primary} />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+                </View>
 
                 {/* Worker Type - Single Select */}
                 {renderDropdownTrigger(`${t('worker_type')} *`, formData.workerType, WORKER_TYPES, 'workerType', errors.workerType, false)}
 
                 {/* Skills - Multi Select - Only show if Worker Type is selected */}
                 {formData.workerType ? (
-                    renderDropdownTrigger(t('skills'), formData.skills, skillList, 'skills', errors.skills, true)
+                    <View style={styles.inputGroup}>
+                        {renderDropdownTrigger(
+                            `${t('skills')} (${formData.skills.length} ${t('selected') || 'selected'})`,
+                            formData.skills,
+                            skillList,
+                            'skills',
+                            errors.skills,
+                            true
+                        )}
+
+                        {/* Selected Skills Chips */}
+                        {formData.skills.length > 0 && (
+                            <View style={styles.selectedSkillsWrapper}>
+                                {formData.skills.map((skill, idx) => (
+                                    <View key={idx} style={styles.skillTag}>
+                                        <Text style={styles.skillTagText} numberOfLines={1}>{skill}</Text>
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    skills: prev.skills.filter(s => s !== skill)
+                                                }));
+                                            }}
+                                            style={styles.skillTagRemove}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="close-circle" size={16} color={COLORS.primary} />
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+
+                        {/* Quick Add Suggestions if few skills selected */}
+                        {formData.skills.length < 5 && skillList.length > 0 && (
+                            <View style={{ marginTop: 4, marginBottom: 10 }}>
+                                <Text style={styles.suggestionLabel}>{t('popular_skills') || 'Quick add skills:'}</Text>
+                                <View style={styles.presetsRow}>
+                                    {skillList.slice(0, 4).map((s, idx) => {
+                                        const isSel = formData.skills.includes(s);
+                                        return (
+                                            <TouchableOpacity
+                                                key={idx}
+                                                style={[styles.presetChip, isSel && styles.presetChipActive]}
+                                                onPress={() => {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        skills: isSel ? prev.skills.filter(x => x !== s) : [...prev.skills, s]
+                                                    }));
+                                                }}
+                                            >
+                                                <Ionicons name={isSel ? "checkmark" : "add"} size={12} color={isSel ? COLORS.primary : COLORS.textSecondary} style={{ marginRight: 3 }} />
+                                                <Text style={[styles.presetChipText, isSel && styles.presetChipTextActive]}>{s}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            </View>
+                        )}
+                    </View>
                 ) : null}
 
+                {/* Fresher & Experience */}
                 <View style={styles.checkboxContainer}>
-                    <TouchableOpacity style={[styles.checkbox, formData.isFresher && styles.checkboxChecked]} onPress={() => setFormData({ ...formData, isFresher: !formData.isFresher, experience: '' })}>
+                    <TouchableOpacity
+                        style={[styles.checkbox, formData.isFresher && styles.checkboxChecked]}
+                        onPress={() => setFormData({ ...formData, isFresher: !formData.isFresher, experience: '' })}
+                        activeOpacity={0.7}
+                    >
                         {formData.isFresher && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
                     </TouchableOpacity>
-                    <Text style={styles.checkboxLabel}>{t('fresher_label') || 'I am a Fresher (No Experience)'}</Text>
+                    <TouchableOpacity
+                        style={{ flex: 1 }}
+                        onPress={() => setFormData({ ...formData, isFresher: !formData.isFresher, experience: '' })}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.checkboxLabel}>{t('fresher_label') || 'I am a Fresher (No Experience)'}</Text>
+                    </TouchableOpacity>
                 </View>
-                {!formData.isFresher && <Input label={t('exp_years_label') || 'Experience (Years) *'} placeholder="e.g. 2.5" value={formData.experience} onChangeText={(text) => setFormData({ ...formData, experience: text.replace(/[^0-9.]/g, '') })} keyboardType="numeric" error={errors.experience} />}
-                <Input label={t('city_state') || 'City/State'} placeholder={t('current_location_placeholder')} value={formData.locationName} onChangeText={(text) => setFormData({ ...formData, locationName: text })} icon="location-outline" />
+
+                {!formData.isFresher && (
+                    <Input
+                        label={t('exp_years_label') || 'Experience (Years) *'}
+                        placeholder="e.g. 2.5"
+                        value={formData.experience}
+                        onChangeText={(text) => setFormData({ ...formData, experience: text.replace(/[^0-9.]/g, '') })}
+                        keyboardType="numeric"
+                        error={errors.experience}
+                        icon="time-outline"
+                    />
+                )}
+
+                {/* Location Picker */}
+                <View style={styles.locationSection}>
+                    <LocationPicker
+                        label={`${t('city_state') || 'City/State'} *`}
+                        placeholder={t('current_location_placeholder') || 'e.g., Kolkata, West Bengal'}
+                        value={formData.locationName}
+                        onChangeLocation={(text, coords, place) => {
+                            const parts = text ? text.split(',').map(p => p.trim()).filter(Boolean) : [];
+                            const detectedCity = place?.city || (parts.length > 0 ? parts[0] : '');
+                            const detectedState = place?.state || (parts.length > 1 ? parts[1] : '');
+
+                            setFormData((prev) => ({
+                                ...prev,
+                                locationName: text,
+                                city: detectedCity || prev.city || '',
+                                state: detectedState || prev.state || '',
+                                coordinates: coords || prev.coordinates || null,
+                            }));
+                            if (errors.locationName) {
+                                setErrors((prev) => ({ ...prev, locationName: '' }));
+                            }
+                        }}
+                        error={errors.locationName}
+                    />
+
+                    {/* Detected City / State pill */}
+                    {(formData.city || formData.state) ? (
+                        <View style={styles.detectedLocationBadge}>
+                            <Ionicons name="navigate-circle" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />
+                            <Text style={styles.detectedLocationText}>
+                                {t('matched_city') || 'Target City'}: <Text style={{ fontWeight: '700', color: COLORS.text }}>{formData.city || 'Any'}</Text>
+                                {formData.state ? `, ${formData.state}` : ''}
+                            </Text>
+                        </View>
+                    ) : null}
+                </View>
+
+                {/* Expected Salary Range */}
+                <View style={styles.salarySection}>
+                    <View style={[styles.salaryHeader, isSmallScreen && { flexDirection: 'column', alignItems: 'flex-start', gap: 6 }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="cash-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+                            <Text style={[styles.label, { marginBottom: 0 }]}>{`${t('expected_salary_range') || 'Expected Salary Range (₹)'} *`}</Text>
+                        </View>
+                        {/* Period Toggle */}
+                        <View style={styles.periodToggleContainer}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.periodBtn,
+                                    formData.expectedSalaryPeriod === 'monthly' && styles.periodBtnActive
+                                ]}
+                                onPress={() => setFormData({ ...formData, expectedSalaryPeriod: 'monthly' })}
+                            >
+                                <Text style={[
+                                    styles.periodBtnText,
+                                    formData.expectedSalaryPeriod === 'monthly' && styles.periodBtnTextActive
+                                ]}>
+                                    {t('monthly') || 'Monthly'}
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.periodBtn,
+                                    formData.expectedSalaryPeriod === 'daily' && styles.periodBtnActive
+                                ]}
+                                onPress={() => setFormData({ ...formData, expectedSalaryPeriod: 'daily' })}
+                            >
+                                <Text style={[
+                                    styles.periodBtnText,
+                                    formData.expectedSalaryPeriod === 'daily' && styles.periodBtnTextActive
+                                ]}>
+                                    {t('daily') || 'Daily'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Min & Max Inputs */}
+                    <View style={styles.salaryInputRow}>
+                        <View style={{ flex: 1, marginRight: isSmallScreen ? 4 : 8 }}>
+                            <Input
+                                label={t('min_salary') || 'Min (₹)'}
+                                placeholder={formData.expectedSalaryPeriod === 'monthly' ? 'e.g. 15000' : 'e.g. 500'}
+                                value={formData.expectedSalaryMin}
+                                onChangeText={(text) => setFormData({ ...formData, expectedSalaryMin: text.replace(/[^0-9]/g, '') })}
+                                keyboardType="numeric"
+                            />
+                        </View>
+                        <View style={{ flex: 1, marginLeft: isSmallScreen ? 4 : 8 }}>
+                            <Input
+                                label={t('max_salary') || 'Max (₹)'}
+                                placeholder={formData.expectedSalaryPeriod === 'monthly' ? 'e.g. 25000' : 'e.g. 900'}
+                                value={formData.expectedSalaryMax}
+                                onChangeText={(text) => setFormData({ ...formData, expectedSalaryMax: text.replace(/[^0-9]/g, '') })}
+                                keyboardType="numeric"
+                            />
+                        </View>
+                    </View>
+                    {errors.expectedSalary && <Text style={styles.errorText}>{errors.expectedSalary}</Text>}
+
+                    {/* Quick Presets */}
+                    <View style={styles.presetsRow}>
+                        {(formData.expectedSalaryPeriod === 'monthly' ? [
+                            { label: '₹10k - ₹15k', min: '10000', max: '15000' },
+                            { label: '₹15k - ₹25k', min: '15000', max: '25000' },
+                            { label: '₹25k - ₹40k', min: '25000', max: '40000' },
+                            { label: '₹40k+', min: '40000', max: '60000' },
+                        ] : [
+                            { label: '₹400 - ₹600', min: '400', max: '600' },
+                            { label: '₹600 - ₹900', min: '600', max: '900' },
+                            { label: '₹900 - ₹1500', min: '900', max: '1500' },
+                            { label: '₹1500+', min: '1500', max: '2500' },
+                        ]).map((preset, idx) => {
+                            const isSelected = formData.expectedSalaryMin === preset.min && formData.expectedSalaryMax === preset.max;
+                            return (
+                                <TouchableOpacity
+                                    key={idx}
+                                    style={[
+                                        styles.presetChip,
+                                        isSelected && styles.presetChipActive,
+                                        {
+                                            paddingVertical: isSmallScreen ? 4 : 5,
+                                            paddingHorizontal: isSmallScreen ? 8 : 10,
+                                        }
+                                    ]}
+                                    onPress={() => setFormData({
+                                        ...formData,
+                                        expectedSalaryMin: preset.min,
+                                        expectedSalaryMax: preset.max
+                                    })}
+                                >
+                                    <Text style={[
+                                        styles.presetChipText,
+                                        isSelected && styles.presetChipTextActive,
+                                        { fontSize: isSmallScreen ? 11 : 12 }
+                                    ]}>
+                                        {preset.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                </View>
             </View>
         );
     };
@@ -399,16 +904,29 @@ export default function RegisterScreen() {
     );
 
     const renderOtpStep = () => (
-        <View style={styles.otpSection}>
+        <View style={[styles.formSection, styles.otpSection, { padding: cardPadding }]}>
             <View style={styles.otpIconContainer}>
-                <Ionicons name="shield-checkmark" size={60} color={COLORS.primary} />
+                <Ionicons name="shield-checkmark" size={isSmallScreen ? 48 : 56} color={COLORS.primary} />
             </View>
-            <Text style={styles.otpTitle}>{t('verify_otp')}</Text>
-            <Text style={styles.otpSubtitle}>{t('enter_otp_sent_to')} +91 {formData.mobile}</Text>
+            <Text style={styles.otpTitle}>{t('verify_otp') || 'Verify Mobile Number'}</Text>
+            <Text style={styles.otpSubtitle}>
+                {t('enter_otp_sent_to') || 'Enter the 6-digit code sent to'}{'\n'}
+                <Text style={{ fontWeight: '700', color: COLORS.text }}>+91 {formData.mobile}</Text>
+            </Text>
+
+            <TouchableOpacity
+                onPress={() => setStep(1)}
+                style={styles.changeMobileBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+            >
+                <Ionicons name="pencil" size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
+                <Text style={styles.changeMobileText}>{t('change_number') || 'Change mobile number'}</Text>
+            </TouchableOpacity>
+
             <View style={styles.otpContainer}>
                 <OtpInput value={otp} onChange={setOtp} length={6} />
             </View>
-            <Button title={t('verify_register')} onPress={handleVerifyOtp} />
+            <Button title={t('verify_register') || 'Verify & Complete Registration'} onPress={handleVerifyOtp} />
         </View>
     );
 
@@ -438,32 +956,57 @@ export default function RegisterScreen() {
             <StatusBar style="light" backgroundColor={COLORS.primary} />
             <View style={{ flex: 1, backgroundColor: COLORS.background }}>
                 {loading && <LoadingSpinner fullScreen={true} message={t('processing')} />}
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()} style={styles.backButton}>
-                            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    style={styles.keyboardView}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+                >
+                    <View style={[styles.header, { paddingHorizontal: contentHorizontalPadding }]}>
+                        <TouchableOpacity
+                            onPress={() => step > 1 ? setStep(step - 1) : router.back()}
+                            style={styles.backButton}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        >
+                            <Ionicons name="arrow-back" size={22} color={COLORS.text} />
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>{step === totalSteps ? t('verification') : (role === 'worker' ? t('create_worker_account') : t('create_employer_account'))}</Text>
-                        <View style={[styles.roleSelectorButton, role === "worker" ? styles.roleSelectorButtonActive : styles.roleSelectorButtonInactive, { opacity: 0 }]}>
-                            {/* Hidden view to balance the flex header space for the title to be perfectly centered */}
-                            <Image source={require('../../assets/images/icon.png')} style={{ width: 32, height: 32 }} resizeMode="contain" />
+                        <View style={styles.headerTitleContainer}>
+                            <Text style={styles.headerTitle} numberOfLines={1}>
+                                {step === totalSteps
+                                    ? (t('verification') || 'Verification')
+                                    : (role === 'worker' ? (t('create_worker_account') || 'Job Seeker Registration') : (t('create_employer_account') || 'Employer Registration'))}
+                            </Text>
+                            <Text style={styles.headerSubtitle} numberOfLines={1}>
+                                {role === 'worker'
+                                    ? (step === 1 ? (t('step1_subtitle') || 'Step 1 of 3 • Basic Details') : step === 2 ? (t('step2_subtitle') || 'Step 2 of 3 • Skills & Location') : (t('step3_subtitle') || 'Step 3 of 3 • Verify OTP'))
+                                    : `Step ${step} of ${totalSteps}`}
+                            </Text>
+                        </View>
+                        <View style={styles.stepBadge}>
+                            <Text style={styles.stepBadgeText}>{step}/{totalSteps}</Text>
                         </View>
                     </View>
 
                     {step < totalSteps && (
                         <View style={styles.progressContainer}>
-                            <View style={[styles.progressBar, { width: `${(step / (totalSteps - 1)) * 100}%` }]} />
+                            <View style={[styles.progressBar, { width: `${(step / totalSteps) * 100}%` }]} />
                         </View>
                     )}
 
-                    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+                    <ScrollView
+                        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: contentHorizontalPadding, paddingBottom: 60 }]}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        <Animated.View style={[{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }, { width: '100%', maxWidth: 540, alignSelf: 'center' }]}>
                             {renderCurrentStep()}
                             {step < totalSteps && (
                                 <View style={styles.footer}>
-                                    <Button title={t('next')} onPress={handleNextWithStructure} />
+                                    <Button title={t('next') || 'Continue'} onPress={handleNextWithStructure} />
                                     <TouchableOpacity style={styles.loginLink} onPress={() => router.push('/auth/login')}>
-                                        <Text style={styles.loginText}>{t('already_have_account')} <Text style={styles.loginTextBold}>{t('login')}</Text></Text>
+                                        <Text style={styles.loginText}>
+                                            {t('already_have_account') || 'Already have an account?'}{' '}
+                                            <Text style={styles.loginTextBold}>{t('login') || 'Login'}</Text>
+                                        </Text>
                                     </TouchableOpacity>
                                 </View>
                             )}
@@ -472,50 +1015,91 @@ export default function RegisterScreen() {
                 </KeyboardAvoidingView>
             </View>
 
-            {/* Selection Modal */}
+            {/* Selection Modal with Search */}
             <Modal
                 visible={dropdownVisible}
                 transparent={true}
                 animationType="fade"
                 onRequestClose={() => setDropdownVisible(false)}
             >
-                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setDropdownVisible(false)}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>{t('select_placeholder').replace('{title}', dropdownConfig.title)}</Text>
-                            <TouchableOpacity onPress={() => setDropdownVisible(false)}>
-                                <Ionicons name="close" size={24} color={COLORS.text} />
-                            </TouchableOpacity>
-                        </View>
-                        {dropdownConfig.items && dropdownConfig.items.length > 0 ? (
-                            <FlatList
-                                data={dropdownConfig.items}
-                                keyExtractor={(item, index) => index.toString()}
-                                renderItem={({ item }) => {
-                                    const isSelected = dropdownConfig.multiSelect
-                                        ? formData[dropdownConfig.key]?.includes(item)
-                                        : formData[dropdownConfig.key] === item;
-                                    return (
-                                        <TouchableOpacity style={[styles.modalItem, isSelected && styles.modalItemSelected]} onPress={() => handleSelect(item)}>
-                                            <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>{item}</Text>
-                                            {isSelected && <Ionicons name="checkmark" size={20} color={COLORS.primary} />}
-                                        </TouchableOpacity>
-                                    );
-                                }}
-                                style={{ maxHeight: height * 0.6 }}
-                            />
-                        ) : (
-                            <View style={styles.emptyContainer}>
-                                <Text style={styles.emptyText}>{t('no_items_available')}</Text>
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setDropdownVisible(false)}
+                >
+                    <TouchableWithoutFeedback>
+                        <View style={[styles.modalContent, { maxHeight: height * 0.75 }]}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle} numberOfLines={1}>
+                                    {t('select_placeholder') ? t('select_placeholder').replace('{title}', dropdownConfig.title) : `Select ${dropdownConfig.title}`}
+                                </Text>
+                                <TouchableOpacity
+                                    onPress={() => setDropdownVisible(false)}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                    <Ionicons name="close" size={24} color={COLORS.text} />
+                                </TouchableOpacity>
                             </View>
-                        )}
 
-                        {dropdownConfig.multiSelect && (
-                            <View style={{ padding: 16 }}>
-                                <Button title={t('done')} onPress={() => setDropdownVisible(false)} />
-                            </View>
-                        )}
-                    </View>
+                            {/* Search bar inside modal for fast filtering */}
+                            {(dropdownConfig.items && dropdownConfig.items.length > 4) && (
+                                <View style={styles.modalSearchContainer}>
+                                    <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
+                                    <TextInput
+                                        style={styles.modalSearchInput}
+                                        placeholder={t('search_dot') || 'Search...'}
+                                        placeholderTextColor={COLORS.textLight}
+                                        value={dropdownSearch}
+                                        onChangeText={setDropdownSearch}
+                                        autoCapitalize="none"
+                                        clearButtonMode="while-editing"
+                                    />
+                                    {dropdownSearch.length > 0 && (
+                                        <TouchableOpacity onPress={() => setDropdownSearch('')}>
+                                            <Ionicons name="close-circle" size={18} color={COLORS.textLight} />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            )}
+
+                            {filteredDropdownItems.length > 0 ? (
+                                <FlatList
+                                    data={filteredDropdownItems}
+                                    keyExtractor={(item, index) => index.toString()}
+                                    keyboardShouldPersistTaps="handled"
+                                    renderItem={({ item }) => {
+                                        const isSelected = dropdownConfig.multiSelect
+                                            ? formData[dropdownConfig.key]?.includes(item)
+                                            : formData[dropdownConfig.key] === item;
+                                        return (
+                                            <TouchableOpacity
+                                                style={[styles.modalItem, isSelected && styles.modalItemSelected]}
+                                                onPress={() => handleSelect(item)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>{item}</Text>
+                                                {isSelected && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
+                                            </TouchableOpacity>
+                                        );
+                                    }}
+                                />
+                            ) : (
+                                <View style={styles.emptyContainer}>
+                                    <Ionicons name="search-outline" size={36} color={COLORS.textLight} style={{ marginBottom: 8 }} />
+                                    <Text style={styles.emptyText}>{t('no_options_found') || 'No matching options found'}</Text>
+                                </View>
+                            )}
+
+                            {dropdownConfig.multiSelect && (
+                                <View style={styles.modalFooter}>
+                                    <Button
+                                        title={`${t('confirm_selection') ? t('confirm_selection').replace('{count}', formData[dropdownConfig.key]?.length || 0) : `Done (${formData[dropdownConfig.key]?.length || 0} selected)`}`}
+                                        onPress={() => setDropdownVisible(false)}
+                                    />
+                                </View>
+                            )}
+                        </View>
+                    </TouchableWithoutFeedback>
                 </TouchableOpacity>
             </Modal>
         </SafeAreaView>
@@ -525,48 +1109,526 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     keyboardView: { flex: 1 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
-    backButton: { padding: 8 },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, flex: 1, textAlign: 'center', marginHorizontal: 10 },
-    progressContainer: { height: 4, backgroundColor: COLORS.border, marginHorizontal: 20, marginTop: 10, borderRadius: 2, overflow: 'hidden' },
-    progressBar: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 2 },
-    scrollContent: { padding: 24, paddingBottom: 40 },
-    formSection: { backgroundColor: COLORS.white, borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3, marginBottom: 20 },
-    sectionTitle: { fontSize: 20, fontWeight: '700', color: COLORS.text, marginBottom: 20 },
-    footer: { marginTop: 10 },
-    loginLink: { marginTop: 20, alignItems: 'center' },
-    loginText: { fontSize: 14, color: COLORS.textSecondary },
-    loginTextBold: { color: COLORS.primary, fontWeight: '600' },
-    otpSection: { alignItems: 'center', padding: 20 },
-    otpIconContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.primaryLight + '20', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
-    otpTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.text, marginBottom: 8 },
-    otpSubtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 30 },
-    otpContainer: { marginBottom: 24, width: '100%' },
-    label: { fontSize: 14, fontWeight: '500', color: COLORS.text, marginBottom: 8 },
-    dropdownContainer: { marginBottom: 16 },
-    dropdownButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 14 },
-    dropdownText: { fontSize: 16, color: COLORS.text },
-    placeholderText: { color: COLORS.textLight },
-    inputError: { borderColor: COLORS.danger },
-    errorText: { color: COLORS.danger, fontSize: 12, marginTop: 4, marginLeft: 4 },
-    checkboxContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 4 },
-    checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', marginRight: 10, backgroundColor: COLORS.white },
-    checkboxChecked: { backgroundColor: COLORS.primary },
-    checkboxLabel: { fontSize: 15, color: COLORS.text, flex: 1 },
-    kycInfoBox: { backgroundColor: COLORS.primaryLight + '10', padding: 20, borderRadius: 12, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: COLORS.primaryLight + '30' },
-    kycTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginTop: 10, marginBottom: 8 },
-    kycSubtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
-    noteText: { fontSize: 13, color: COLORS.textLight, textAlign: 'center', fontStyle: 'italic', marginTop: 10 },
-
-    // Modal Styles
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    modalContent: { backgroundColor: COLORS.white, borderRadius: 16, width: '100%', maxHeight: '80%', paddingVertical: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, paddingBottom: 16 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
-    modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
-    modalItemSelected: { backgroundColor: COLORS.primaryLight + '10' },
-    modalItemText: { fontSize: 16, color: COLORS.text },
-    modalItemTextSelected: { color: COLORS.primary, fontWeight: '600' },
-    emptyContainer: { padding: 20, alignItems: 'center' },
-    emptyText: { color: COLORS.textSecondary, fontSize: 16 }
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: 14,
+        paddingBottom: 12,
+        backgroundColor: COLORS.white,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    backButton: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: COLORS.white,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.border || '#E2E8F0',
+    },
+    headerTitleContainer: {
+        flex: 1,
+        marginHorizontal: 12,
+    },
+    headerTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.text,
+    },
+    headerSubtitle: {
+        fontSize: 12,
+        color: COLORS.textSecondary || '#64748B',
+        marginTop: 2,
+    },
+    stepBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '20',
+        borderWidth: 1,
+        borderColor: (COLORS.primary || '#1976D2') + '40',
+    },
+    stepBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.primary || '#1976D2',
+    },
+    progressContainer: {
+        height: 3,
+        backgroundColor: '#E2E8F0',
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        backgroundColor: COLORS.primary || '#1976D2',
+    },
+    scrollContent: {
+        paddingTop: 12,
+    },
+    formSection: {
+        backgroundColor: COLORS.white,
+        borderRadius: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 3,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+    },
+    sectionHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    sectionIconBadge: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.text,
+    },
+    sectionCaption: {
+        fontSize: 12,
+        color: COLORS.textSecondary || '#64748B',
+        marginTop: 2,
+    },
+    inputGroup: {
+        marginBottom: 14,
+    },
+    avatarSection: {
+        alignItems: 'center',
+        marginBottom: 18,
+    },
+    avatarUploadingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    avatarUploadingText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    avatarActionText: {
+        fontSize: 13,
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    avatarRemoveBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 6,
+        paddingVertical: 3,
+        paddingHorizontal: 8,
+    },
+    avatarRemoveText: {
+        fontSize: 12,
+        color: COLORS.error || '#EF4444',
+        fontWeight: '500',
+    },
+    label: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.text,
+        marginBottom: 6,
+    },
+    genderRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    genderPill: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: COLORS.border || '#CBD5E1',
+        backgroundColor: '#FFFFFF',
+    },
+    genderPillActive: {
+        backgroundColor: COLORS.primary || '#1976D2',
+        borderColor: COLORS.primary || '#1976D2',
+    },
+    genderPillText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.textSecondary || '#475569',
+    },
+    genderPillTextActive: {
+        color: '#FFFFFF',
+    },
+    dropdownContainer: {
+        marginBottom: 14,
+    },
+    dropdownButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: COLORS.border || '#CBD5E1',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+    },
+    dropdownButtonSelected: {
+        borderColor: (COLORS.primary || '#1976D2') + '60',
+        backgroundColor: '#F8FAFC',
+    },
+    dropdownText: {
+        fontSize: 14,
+        color: COLORS.text,
+        flex: 1,
+        marginRight: 6,
+    },
+    placeholderText: {
+        color: COLORS.textLight || '#94A3B8',
+    },
+    inputError: {
+        borderColor: COLORS.danger || '#EF4444',
+    },
+    errorText: {
+        color: COLORS.danger || '#EF4444',
+        fontSize: 11,
+        marginTop: 4,
+        marginLeft: 2,
+    },
+    selectedSkillsWrapper: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginTop: 8,
+    },
+    skillTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '20',
+        borderWidth: 1,
+        borderColor: (COLORS.primary || '#1976D2') + '40',
+        borderRadius: 14,
+        paddingVertical: 4,
+        paddingLeft: 10,
+        paddingRight: 6,
+    },
+    skillTagText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.primary || '#1976D2',
+        marginRight: 4,
+        maxWidth: 160,
+    },
+    skillTagRemove: {
+        padding: 2,
+    },
+    suggestionLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: COLORS.textSecondary || '#64748B',
+        marginBottom: 6,
+    },
+    checkboxContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 14,
+        marginTop: 4,
+    },
+    checkbox: {
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+        backgroundColor: COLORS.white,
+    },
+    checkboxChecked: {
+        backgroundColor: COLORS.primary,
+    },
+    checkboxLabel: {
+        fontSize: 14,
+        color: COLORS.text,
+        fontWeight: '500',
+    },
+    locationSection: {
+        marginBottom: 8,
+    },
+    detectedLocationBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F1F5F9',
+        borderRadius: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        marginTop: -6,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    detectedLocationText: {
+        fontSize: 12,
+        color: COLORS.textSecondary || '#64748B',
+    },
+    salarySection: {
+        marginTop: 10,
+        marginBottom: 6,
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border || '#E2E8F0',
+    },
+    salaryHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    periodToggleContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#E2E8F0',
+        borderRadius: 8,
+        padding: 2,
+    },
+    periodBtn: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 6,
+    },
+    periodBtnActive: {
+        backgroundColor: COLORS.primary || '#1976D2',
+    },
+    periodBtnText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: COLORS.textSecondary || '#64748B',
+    },
+    periodBtnTextActive: {
+        color: '#FFFFFF',
+    },
+    salaryInputRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    presetsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginTop: 4,
+    },
+    presetChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 5,
+        paddingHorizontal: 9,
+        borderRadius: 14,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: COLORS.border || '#CBD5E1',
+    },
+    presetChipActive: {
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '25',
+        borderColor: COLORS.primary || '#1976D2',
+    },
+    presetChipText: {
+        fontSize: 11,
+        fontWeight: '500',
+        color: COLORS.textSecondary || '#475569',
+    },
+    presetChipTextActive: {
+        color: COLORS.primary || '#1976D2',
+        fontWeight: '700',
+    },
+    otpSection: {
+        alignItems: 'center',
+        paddingVertical: 24,
+    },
+    otpIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    otpTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.text,
+        marginBottom: 6,
+    },
+    otpSubtitle: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    changeMobileBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        marginBottom: 20,
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+    },
+    changeMobileText: {
+        fontSize: 12,
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    otpContainer: {
+        marginBottom: 20,
+        width: '100%',
+    },
+    footer: {
+        marginTop: 8,
+    },
+    loginLink: {
+        marginTop: 16,
+        alignItems: 'center',
+    },
+    loginText: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+    },
+    loginTextBold: {
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    kycInfoBox: {
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '10',
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: (COLORS.primaryLight || '#1976D2') + '30',
+    },
+    kycTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: COLORS.primary,
+        marginTop: 8,
+        marginBottom: 6,
+    },
+    kycSubtitle: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    noteText: {
+        fontSize: 12,
+        color: COLORS.textLight,
+        textAlign: 'center',
+        fontStyle: 'italic',
+        marginTop: 8,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 16,
+    },
+    modalContent: {
+        backgroundColor: COLORS.white,
+        borderRadius: 16,
+        width: '100%',
+        maxWidth: 480,
+        paddingTop: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 8,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    modalTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.text,
+        flex: 1,
+        marginRight: 8,
+    },
+    modalSearchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 16,
+        marginTop: 10,
+        marginBottom: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderRadius: 8,
+    },
+    modalSearchInput: {
+        flex: 1,
+        fontSize: 13,
+        color: COLORS.text,
+        padding: 0,
+    },
+    modalItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    modalItemSelected: {
+        backgroundColor: (COLORS.primaryLight || '#1976D2') + '15',
+    },
+    modalItemText: {
+        fontSize: 14,
+        color: COLORS.text,
+        flex: 1,
+        marginRight: 8,
+    },
+    modalItemTextSelected: {
+        color: COLORS.primary || '#1976D2',
+        fontWeight: '600',
+    },
+    emptyContainer: {
+        padding: 24,
+        alignItems: 'center',
+    },
+    emptyText: {
+        color: COLORS.textSecondary,
+        fontSize: 14,
+    },
+    modalFooter: {
+        padding: 14,
+        borderTopWidth: 1,
+        borderTopColor: '#F1F5F9',
+    },
 });

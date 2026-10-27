@@ -6,7 +6,6 @@ import {
     TouchableOpacity,
     Animated,
     Dimensions,
-    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -69,11 +68,7 @@ export default function SelectRoleScreen() {
                 activeOpacity={0.9}
             >
                 <View style={[styles.iconContainer, { backgroundColor: color }]}>
-                    {icon === 'shramik-logo' ? (
-                        <Image source={require('../../assets/images/icon.png')} style={{ width: 44, height: 44 }} resizeMode="contain" />
-                    ) : (
-                        <Ionicons name={icon} size={32} color={COLORS.white} />
-                    )}
+                    <Ionicons name={icon} size={32} color={COLORS.white} />
                 </View>
                 <View style={styles.roleInfo}>
                     <Text style={styles.roleTitle}>{title}</Text>
@@ -88,7 +83,7 @@ export default function SelectRoleScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar style="dark" />
+            <StatusBar backgroundColor="#FFFFFF" style="dark" />
             <View style={styles.content}>
                 <View style={styles.headerContainer}>
                     <Text style={styles.title}>{t('who_are_you')}</Text>
@@ -101,7 +96,7 @@ export default function SelectRoleScreen() {
                     role="worker"
                     title={t('role_worker_title')}
                     description={t('role_worker_desc')}
-                    icon="shramik-logo"
+                    icon="construct"
                     color={COLORS.primary}
                     onPress={() => handleSelectRole('worker')}
                     style={styles.cardContainer}

@@ -6,14 +6,18 @@ const getDevIp = () => {
     return hostUri.split(':')[0];
 };
 
+const PROD_API_URL = 'https://shramikseva.com/api';
+const PROD_WEB_URL = 'https://shramikseva.com';
+
 const DEV_API_URL = `http://${getDevIp()}:5000/api`;
 const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 // In development, we want to prioritize the auto-detected IP over 'localhost' 
 // because 'localhost' doesn't work on physical devices or emulators.
-export const API_URL = (__DEV__ && (!ENV_API_URL || ENV_API_URL.includes('localhost')))
-    ? DEV_API_URL
-    : (ENV_API_URL || 'http://localhost:5000/api');
+// In production, ALWAYS default to production URL (never localhost or dev IP).
+export const API_URL = __DEV__
+    ? ((!ENV_API_URL || ENV_API_URL.includes('localhost')) ? DEV_API_URL : ENV_API_URL)
+    : (ENV_API_URL || PROD_API_URL);
 
 if (__DEV__) {
     console.log('[Config] Resolved API_URL:', API_URL);
@@ -21,7 +25,9 @@ if (__DEV__) {
 
 // Frontend Web URL. In local dev, it runs on port 3000 instead of backend's 5000.
 export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ||
-    (API_URL.includes('5000') ? API_URL.replace('5000', '3000').replace('/api', '') : API_URL.replace('/api', ''));
+    (__DEV__
+        ? (API_URL.includes('5000') ? API_URL.replace('5000', '3000').replace('/api', '') : API_URL.replace('/api', ''))
+        : PROD_WEB_URL);
 
 // Worker Types & Skills Mapping (Synced with Web)
 export const WORKER_SKILLS = {
@@ -29,7 +35,7 @@ export const WORKER_SKILLS = {
         "Access Control", "Visitor Management", "Patrolling", "CCTV Monitoring", "Surveillance", "Incident Reporting", "Emergency Response", "Crowd Control", "Conflict Management", "Fire Safety Awareness", "Alarm Systems Handling", "Security Protocols", "Shift Management", "Team Supervision", "Risk Assessment", "Incident Investigation", "Report Writing", "Communication Skills", "Physical Fitness", "First Aid", "SOP Compliance"
     ],
     "Security Supervisor": [
-        "Access Control", "Visitor Management", "Patrolling", "CCTV Monitoring", "Surveillance", "Incident Reporting", "Emergency Response", "Crowd Control", "Conflict Management", "Fire Safety Awareness", "Alarm Systems Handling", "Security Protocols", "Shift Management", "Team Supervision", "Risk Assessment", "Incident Investigation", "Report Writing", "Communication Skills", "Physical Fitness", "First Aid", "SOP Compliance"
+        "Shift Management", "Roster Planning", "Team Supervision", "Guard Deployment Audits", "Client Escalation Handling", "Incident Investigation", "Report Writing", "Risk Assessment", "CCTV Audit", "Attendance & Muster Verification", "Emergency Protocol Drill", "Communication Skills", "SOP Compliance"
     ],
     "Housekeepers": [
         "Cleaning & Sanitization", "Floor Cleaning", "Washroom Cleaning", "Waste Management", "Linen Handling", "Chemical Handling", "Housekeeping Equipment Operation", "Room Maintenance", "Deep Cleaning", "Hygiene Standards", "Inventory Management", "Time Management", "Attention to Detail"
@@ -85,6 +91,18 @@ export const WORKER_SKILLS = {
     "Rajmistri (Masons)": [
         "Bricklaying", "Plastering", "Concreting", "Tiling", "Stone Masonry", "Blueprint Reading", "Material Estimation", "Safety Practices", "Finishing Work", "Formwork"
     ],
+    "Gym Trainer": [
+        "Personal Training", "Fitness Assessment", "Strength Training", "Cardio Conditioning", "Weight Management", "Workout Planning", "Equipment Handling & Safety", "Exercise Technique Coaching", "Nutrition Guidance", "Injury Prevention", "Client Motivation", "CPR & First Aid"
+    ],
+    "Housekeeper Supervisor": [
+        "Team Supervision", "Roster & Shift Scheduling", "Deep Cleaning Inspection", "Hygiene & Sanitization Standards", "Housekeeping Inventory Management", "Chemical Safety Handling", "SOP Compliance", "Staff Training", "Waste Management", "Guest & Client Handling", "Equipment Maintenance Oversight", "Quality Auditing"
+    ],
+    "Ward Boy": [
+        "Patient Transportation", "Wheelchair & Stretcher Handling", "Bed Making & Linen Changing", "Patient Mobility Assistance", "Sample Collection & Delivery", "Ward Cleanliness & Hygiene", "Oxygen Cylinder Handling", "Medical Waste Disposal", "Equipment Shifting", "Infection Control Basics", "Compassionate Patient Care", "Emergency Assistance"
+    ],
+    "Ward Girl": [
+        "Patient Transportation", "Wheelchair & Stretcher Handling", "Bed Making & Linen Changing", "Patient Mobility Assistance", "Sample Collection & Delivery", "Ward Cleanliness & Hygiene", "Oxygen Cylinder Handling", "Medical Waste Disposal", "Equipment Shifting", "Infection Control Basics", "Compassionate Patient Care", "Emergency Assistance"
+    ],
     "Any skilled/unskilled workers": [
         "General Maintenance", "Helper Work", "Machine Operation", "Manual Labor", "Cleaning Assistance", "Tool Handling", "Safety Awareness", "Basic Electrical Knowledge", "Basic Plumbing Knowledge", "Team Support", "Physical Work"
     ]
@@ -121,6 +139,33 @@ export const EMPLOYEE_COUNTS = [
     '51-200',
     '201-500',
     '500+'
+];
+
+// Qualifications / Education Levels (WorkIndia Style)
+export const QUALIFICATIONS = [
+    'Below 10th',
+    '10th Pass',
+    '12th Pass',
+    'Diploma',
+    'Graduate',
+    'Post Graduate'
+];
+
+// Languages Known (WorkIndia Style)
+export const KNOWN_LANGUAGES = [
+    'Hindi',
+    'English',
+    'Bengali',
+    'Marathi',
+    'Gujarati',
+    'Tamil',
+    'Telugu',
+    'Kannada',
+    'Malayalam',
+    'Odia',
+    'Punjabi',
+    'Assamese',
+    'Urdu'
 ];
 
 // Indian States

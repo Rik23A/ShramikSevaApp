@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import { useLanguage } from '../../context/LanguageContext';
 import Button from './Button';
 
 const { height } = Dimensions.get('window');
@@ -36,6 +37,7 @@ export default function SelectionModal({
     multiSelect = false,
     showSearch = true,
 }) {
+    const { t } = useLanguage();
     const [searchQuery, setSearchQuery] = useState('');
     const [tempSelection, setTempSelection] = useState([]);
 
@@ -122,7 +124,7 @@ export default function SelectionModal({
                             <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
                             <TextInput
                                 style={styles.searchInput}
-                                placeholder="Search..."
+                                placeholder={t('search_dot')}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
                                 placeholderTextColor={COLORS.textSecondary}
@@ -142,7 +144,7 @@ export default function SelectionModal({
                         contentContainerStyle={styles.listContent}
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
-                                <Text style={styles.emptyText}>No options found</Text>
+                                <Text style={styles.emptyText}>{t('no_options_found')}</Text>
                             </View>
                         }
                     />
@@ -150,7 +152,7 @@ export default function SelectionModal({
                     {multiSelect && (
                         <View style={styles.footer}>
                             <Button
-                                title={`Confirm Selection (${tempSelection.length})`}
+                                title={t('confirm_selection', { count: tempSelection.length })}
                                 onPress={handleConfirm}
                                 style={styles.confirmButton}
                             />

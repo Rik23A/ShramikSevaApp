@@ -1,28 +1,99 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import { WebView } from 'react-native-webview';
 import { COLORS } from '../../constants/config';
 import { API_URL, WEB_URL } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useSocket } from '../../context/SocketContext';
 import axios from 'axios';
 
 export default function PaymentScreen() {
     const { user, token } = useAuth();
     const { t, language } = useLanguage();
+    const { socket } = useSocket();
     const params = useLocalSearchParams();
     const [loading, setLoading] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(true);
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [pricing, setPricing] = useState(null);
+    const [showWebView, setShowWebView] = useState(false);
+    const [paymentUrl, setPaymentUrl] = useState('');
+
+    const activeOrderIdRef = useRef(null);
 
     // Initial values from params
     const initialAmount = params.amount || '0';
     const planId = params.planId;
     const planName = params.planName || planId || t('subscription_plan');
+
+    // 🔌 Socket event listener for real-time payment status updates
+    useEffect(() => {
+        if (socket) {
+            console.log('🔌 Registering payment status socket listener...');
+            socket.on('payment:status', (data) => {
+                console.log('🔌 WebSocket payment:status received:', data);
+                if (data.orderId === activeOrderIdRef.current) {
+                    router.replace({
+                        pathname: '/(employer)/payment-status',
+                        params: { 
+                            status: data.status === 'success' ? 'success' : 'failed', 
+                            orderId: data.orderId, 
+                            txnId: data.txnId 
+                        }
+                    });
+                }
+            });
+        }
+        return () => {
+            if (socket) {
+                socket.off('payment:status');
+            }
+        };
+    }, [socket]);
+
+    // Check payment status helper
+    const checkPaymentStatus = async (orderId) => {
+        try {
+            const statusRes = await axios.get(`${API_URL}/payments/paytm/status/${orderId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            if (statusRes.data && statusRes.data.success) {
+                const finalStatus = statusRes.data.status;
+                const finalTxnId = statusRes.data.txnId;
+                if (finalStatus === 'success' || finalStatus === 'failure' || finalStatus === 'failed') {
+                    router.replace({
+                        pathname: '/(employer)/payment-status',
+                        params: { status: (finalStatus === 'success' ? 'success' : 'failed'), orderId, txnId: finalTxnId }
+                    });
+                    return true;
+                }
+            }
+        } catch (err) {
+            console.log("On-demand payment status check pending or failed", err);
+        }
+        return false;
+    };
+
+    // 📱 AppState foreground resumption listener to capture UPI callbacks immediately
+    useEffect(() => {
+        const handleAppStateChange = async (nextAppState) => {
+            if (nextAppState === 'active' && activeOrderIdRef.current) {
+                console.log("📱 App returned to foreground, checking status immediately for:", activeOrderIdRef.current);
+                await checkPaymentStatus(activeOrderIdRef.current);
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+        return () => {
+            subscription.remove();
+        };
+    }, []);
 
     useEffect(() => {
         const fetchPreview = async () => {
@@ -83,52 +154,15 @@ export default function PaymentScreen() {
 
             if (initiateResponse.data.success) {
                 const { txnToken, orderId, mid } = initiateResponse.data;
+                
+                // Track active order id in ref
+                activeOrderIdRef.current = orderId;
 
                 // Open the backend payment handoff page in WebView
                 const paymentPageUrl = `${API_URL}/payments/paytm/pay?txnToken=${txnToken}&orderId=${orderId}&mid=${mid}`;
 
-                await WebBrowser.openBrowserAsync(paymentPageUrl);
-
-                // --- FALLBACK POLLING FIREWALL for UPI APPS ---
-                // UPI Apps completely destroy the Custom Tab and return the user instantly.
-                // We keep the spinner spinning and quietly ask the backend every 3 seconds if the webhook arrived.
-                let attempts = 0;
-                let finalStatus = 'pending';
-                let finalTxnId = null;
-
-                while (attempts < 5 && finalStatus === 'pending') { // Poll for 15 seconds (5 attempts * 3 seconds)
-                    try {
-                        const statusRes = await axios.get(`${API_URL}/payments/paytm/status/${orderId}`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
-                        
-                        if (statusRes.data && statusRes.data.success) {
-                            finalStatus = statusRes.data.status;
-                            finalTxnId = statusRes.data.txnId;
-                        }
-                    } catch (err) {
-                        console.log("Manual polling check failed or pending", err);
-                    }
-
-                    if (finalStatus === 'pending') {
-                        attempts++;
-                        await new Promise(resolve => setTimeout(resolve, 3000)); // wait 3 seconds before trying again
-                    }
-                }
-
-                if (finalStatus === 'success' || finalStatus === 'failure' || finalStatus === 'failed') {
-                    router.replace({
-                        pathname: '/(employer)/payment-status',
-                        params: { status: (finalStatus === 'success' ? 'success' : 'failed'), orderId, txnId: finalTxnId }
-                    });
-                    return; // Stop execution here to prevent loading flicker
-                } else {
-                    Alert.alert(
-                        t('payment_pending_title') || "Payment Processing",
-                        t('payment_pending_desc') || "Your payment is still being verified by the bank. Please check your billing dashboard in a few minutes."
-                    );
-                }
-
+                setPaymentUrl(paymentPageUrl);
+                setShowWebView(true);
                 setLoading(false);
             } else {
                 Alert.alert(t('error'), t('initiate_error'));
@@ -146,6 +180,81 @@ export default function PaymentScreen() {
         return (
             <View style={styles.container}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
+    }
+
+    const handleNavigationStateChange = async (navState) => {
+        const { url } = navState;
+        console.log("🌐 WebView Navigated to:", url);
+
+        if (url.includes('payment-status') || url.includes('/subscriptions/status')) {
+            setShowWebView(false);
+            setLoading(true);
+
+            const queryParams = {};
+            const urlParts = url.split('?');
+            if (urlParts.length > 1) {
+                const pairs = urlParts[1].split('&');
+                for (const pair of pairs) {
+                    const [key, value] = pair.split('=');
+                    queryParams[decodeURIComponent(key)] = decodeURIComponent(value || '');
+                }
+            }
+
+            const status = queryParams.status === 'success' ? 'success' : 'failed';
+            const orderId = queryParams.orderId || activeOrderIdRef.current;
+            const txnId = queryParams.txnId || '';
+
+            router.replace({
+                pathname: '/(employer)/payment-status',
+                params: { status, orderId, txnId }
+            });
+        }
+    };
+
+    const handleShouldStartLoadWithRequest = (request) => {
+        const { url } = request;
+        
+        // Allow standard web URLs to load in the WebView
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            return true;
+        }
+
+        // Intercept custom schemes (like upi:// or paytmmp://) and open them in external native apps
+        Linking.canOpenURL(url).then(supported => {
+            if (supported) {
+                Linking.openURL(url);
+            } else {
+                console.log("No installed app found to handle URI: " + url);
+            }
+        }).catch(err => console.error('Error opening URL natively:', err));
+        
+        return false; // Prevent the WebView from attempting to load custom schemes
+    };
+
+    if (showWebView) {
+        return (
+            <View style={{ flex: 1, backgroundColor: '#fff' }}>
+                <View style={{ height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingTop: 10 }}>
+                    <TouchableOpacity onPress={() => setShowWebView(false)}>
+                        <Ionicons name="close" size={28} color="#000" />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{t('secure_payment')}</Text>
+                    <View style={{ width: 28 }} />
+                </View>
+                
+                <WebView 
+                    source={{ uri: paymentUrl }}
+                    onNavigationStateChange={handleNavigationStateChange}
+                    onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+                    originWhitelist={['*']}
+                    javaScriptEnabled={true}
+                    domStorageEnabled={true}
+                    startInLoadingState={true}
+                    userAgent="Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Mobile Safari/537.36"
+                    renderLoading={() => <ActivityIndicator size="large" color="#002E6E" style={{ position: 'absolute', top: '50%', left: '50%', transform: [{translateX: -25}, {translateY: -25}] }} />}
+                />
             </View>
         );
     }

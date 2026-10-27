@@ -6,36 +6,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/config';
 import { useLanguage } from '../../context/LanguageContext';
-import NotificationBell from '../../components/NotificationBell';
+import HeaderProfile from '../../components/HeaderProfile';
+import ProfileTabIcon from '../../components/ProfileTabIcon';
 
 export default function EmployerLayout() {
     const insets = useSafeAreaInsets();
     const { t } = useLanguage();
 
     const HeaderRight = () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
             <TouchableOpacity
                 onPress={() => router.push('/(employer)/post-job')}
                 style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     backgroundColor: 'rgba(255,255,255,0.2)',
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
                     borderRadius: 20,
-                    marginRight: 12
+                    marginRight: 8
                 }}
             >
-                <Ionicons name="add-circle" size={18} color={COLORS.white} />
-                <Text style={{ color: COLORS.white, fontSize: 13, fontWeight: 'bold', marginLeft: 4 }}>{t('post_job')}</Text>
+                <Ionicons name="add-circle" size={16} color={COLORS.white} />
+                <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: 'bold', marginLeft: 4 }}>{t('post_job')}</Text>
             </TouchableOpacity>
-            <NotificationBell iconColor={COLORS.white} />
+            <HeaderProfile />
         </View>
     );
 
     return (
         <>
-            <StatusBar style="light" />
+            <StatusBar backgroundColor="#1976D2" style="light" />
             <Tabs
                 screenOptions={{
                     tabBarActiveTintColor: COLORS.secondary,
@@ -130,7 +131,7 @@ export default function EmployerLayout() {
                     options={{
                         title: t('nav_profile'),
                         tabBarIcon: ({ color, size }) => (
-                            <Ionicons name="person" size={size} color={color} />
+                            <ProfileTabIcon color={color} size={size} />
                         ),
                         headerTitle: t('company_profile'),
                     }}

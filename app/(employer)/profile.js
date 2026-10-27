@@ -10,7 +10,7 @@ import {
     Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, Stack, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { COLORS, API_URL, WEB_URL } from '../../constants/config';
 import { useAuth } from '../../context/AuthContext';
@@ -25,10 +25,14 @@ import ProfileImagePicker from '../../components/profile/ProfileImagePicker';
 import DocumentUploadSection from '../../components/profile/DocumentUploadSection';
 import LanguageSelectionModal from '../../components/profile/LanguageSelectionModal';
 import ChangePasswordModal from '../../components/profile/ChangePasswordModal';
+import ProfileChecklistCard from '../../components/ProfileChecklistCard';
 import { translations, LANGUAGES } from '../../constants/translations';
+import { useUpdate } from '../../context/UpdateContext';
+import { getCurrentAppVersion } from '../../services/updateService';
 
 export default function EmployerProfileScreen() {
-    const { user, logout, updateUser } = useAuth();
+    const navigation = useNavigation();
+    const { user, logout, updateUser, refreshProfile } = useAuth();
     const { t, locale, changeLanguage } = useLanguage();
     const [profile, setProfile] = useState(null);
     const [dashboardData, setDashboardData] = useState(null);
@@ -37,6 +41,23 @@ export default function EmployerProfileScreen() {
     const [uploading, setUploading] = useState(false);
     const [showLangModal, setShowLangModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const { checkForUpdates } = useUpdate();
+    const appVersionInfo = getCurrentAppVersion();
+
+    // Set custom headerRight button for the Profile tab in the Tabs navigator
+    useEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={() => setShowLangModal(true)}
+                    style={styles.headerLangButton}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="language" size={22} color={COLORS.white} />
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation, locale]);
 
     const employerDocTypes = [
         { label: t('gst_certificate'), value: 'gst_certificate' },
@@ -58,9 +79,11 @@ export default function EmployerProfileScreen() {
                 getEmployerDashboard()
             ]);
 
-
             setProfile(profileData);
             setDashboardData(dashboardData);
+            if (profileData) {
+                await updateUser(profileData);
+            }
         } catch (error) {
             console.error('Failed to fetch profile/dashboard:', error);
         } finally {
@@ -109,8 +132,13 @@ export default function EmployerProfileScreen() {
             const uploadResult = await uploadFile(imageAsset);
             await updateProfile({ profilePicture: uploadResult.fileUrl });
 
-            setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
-            updateUser({ profilePicture: uploadResult.fileUrl });
+            if (refreshProfile) {
+                const refreshed = await refreshProfile();
+                if (refreshed) setProfile(refreshed);
+            } else {
+                setProfile({ ...profile, profilePicture: uploadResult.fileUrl });
+                updateUser({ profilePicture: uploadResult.fileUrl });
+            }
         } catch (error) {
             console.error('Failed to upload image:', error);
             Alert.alert(t('error_title'), t('failed_to_upload_doc') || 'Failed to upload company logo');
@@ -121,11 +149,23 @@ export default function EmployerProfileScreen() {
 
     const handleSaveProfile = async (updatedData) => {
         try {
-            await updateProfile(updatedData);
-            setProfile({ ...profile, ...updatedData });
-            updateUser(updatedData);
-            Alert.alert(t('success'), t('profile_updated_success'));
+            const result = await updateProfile(updatedData);
+            // Immediately apply updated data to local screen state
+            const merged = { ...profile, ...updatedData, ...(result || {}) };
+            setProfile(merged);
+            updateUser(merged);
+
+            // Silently refresh in the background if available
+            if (refreshProfile) {
+                refreshProfile().then((refreshed) => {
+                    if (refreshed) setProfile(refreshed);
+                }).catch((err) => {
+                    console.warn('[Profile] Background refresh warning:', err?.message);
+                });
+            }
+            Alert.alert(t('success') || 'Success', t('profile_updated_success') || 'Profile updated successfully');
         } catch (error) {
+            console.error('Failed to update profile:', error);
             throw error;
         }
     };
@@ -146,22 +186,6 @@ export default function EmployerProfileScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Header Configuration */}
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    title: t('nav_profile'),
-                    headerStyle: { backgroundColor: COLORS.primary },
-                    headerTintColor: COLORS.white,
-                    headerShadowVisible: false,
-                    headerRight: () => (
-                        <TouchableOpacity onPress={() => setShowLangModal(true)} style={{ marginRight: 10 }}>
-                            <Ionicons name="language" size={24} color={COLORS.white} />
-                        </TouchableOpacity>
-                    ),
-                }}
-            />
-
             <ScrollView
                 style={styles.container}
                 contentContainerStyle={styles.contentContainer}
@@ -289,25 +313,12 @@ export default function EmployerProfileScreen() {
                     );
                 })()}
 
-                {/* Profile Completion Prompt */}
-                {!companyDetails.isProfileComplete && (
-                    <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.alertCard}>
-                        <View style={styles.alertContent}>
-                            <Ionicons name="information-circle" size={24} color={COLORS.warning} />
-                            <View style={styles.alertTextContainer}>
-                                <Text style={styles.alertTitle}>{t('complete_profile_title')}</Text>
-                                <Text style={styles.alertSubtitle}>{t('complete_profile_subtitle')}</Text>
-                            </View>
-                        </View>
-                        <TouchableOpacity
-                            style={styles.alertAction}
-                            onPress={() => setShowEditModal(true)}
-                        >
-                            <Text style={styles.alertActionText}>{t('complete_now')}</Text>
-                            <Ionicons name="arrow-forward" size={16} color={COLORS.warning} />
-                        </TouchableOpacity>
-                    </Animated.View>
-                )}
+                {/* Profile Completion Status & Checklist Card */}
+                <ProfileChecklistCard
+                    user={profile}
+                    onEditPress={() => setShowEditModal(true)}
+                    style={{ marginHorizontal: 20, marginBottom: 15 }}
+                />
 
                 {/* Menu / Info Sections */}
                 <View style={styles.sectionContainer}>
@@ -489,7 +500,7 @@ export default function EmployerProfileScreen() {
                 )}
 
                 {/* Documents Section */}
-                <DocumentUploadSection docTypes={employerDocTypes} />
+                <DocumentUploadSection docTypes={employerDocTypes} onDocumentUploaded={() => fetchProfile()} />
 
                 {/* Account Actions */}
                 <View style={styles.sectionContainer}>
@@ -521,6 +532,24 @@ export default function EmployerProfileScreen() {
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
 
+                        {/* Language Selection Option */}
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => setShowLangModal(true)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: '#E0F2FE' }]}>
+                                <Ionicons name="language" size={20} color="#0284C7" />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuValue}>{t('change_language') || 'Language'}</Text>
+                                <Text style={styles.menuLabel}>
+                                    {(LANGUAGES || []).find(l => l.code === locale)?.label || 'English'} ({(LANGUAGES || []).find(l => l.code === locale)?.native || 'English'})
+                                </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => Linking.openURL(`${WEB_URL}/${locale}/contact`)}
@@ -530,6 +559,35 @@ export default function EmployerProfileScreen() {
                             </View>
                             <View style={styles.menuContent}>
                                 <Text style={styles.menuValue}>{t('help_support')}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={async () => {
+                                const res = await checkForUpdates();
+                                if (res && !res.updateAvailable) {
+                                    Alert.alert(
+                                        t('up_to_date') || 'Up to Date 🎉',
+                                        t('up_to_date_msg') || `You are using the latest version of Shramik Seva (v${appVersionInfo.version}).`,
+                                        [{ text: t('ok') || 'OK' }]
+                                    );
+                                } else if (!res) {
+                                    Alert.alert(
+                                        t('notice') || 'Notice',
+                                        t('update_check_failed') || 'Could not check for updates. Please check your internet connection.',
+                                        [{ text: t('ok') || 'OK' }]
+                                    );
+                                }
+                            }}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: '#E8F5E9' }]}>
+                                <Ionicons name="cloud-download-outline" size={20} color={COLORS.success} />
+                            </View>
+                            <View style={styles.menuContent}>
+                                <Text style={styles.menuValue}>{t('check_for_updates') || "Check for App Updates"}</Text>
+                                <Text style={styles.menuLabel}>Version {appVersionInfo.version} (Build {appVersionInfo.versionCode})</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
                         </TouchableOpacity>
@@ -559,6 +617,12 @@ export default function EmployerProfileScreen() {
                             </View>
                         </TouchableOpacity>
                     </View>
+                </View>
+
+                <View style={{ alignItems: 'center', marginVertical: 16 }}>
+                    <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
+                        Shramik Seva v{appVersionInfo.version} ({appVersionInfo.platform})
+                    </Text>
                 </View>
 
                 <View style={{ height: 40 }} />
@@ -990,5 +1054,14 @@ const styles = StyleSheet.create({
     selectedLangText: {
         color: COLORS.primary,
         fontWeight: '600',
+    },
+    headerLangButton: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
     },
 });

@@ -25,7 +25,16 @@ export const saveToken = async (token) => {
 export const getToken = async () => {
     try {
         if (isSecureStoreAvailable) {
-            return await SecureStore.getItemAsync(TOKEN_KEY);
+            let token = await SecureStore.getItemAsync(TOKEN_KEY);
+            // Fallback for any legacy token stored in AsyncStorage
+            if (!token) {
+                token = await AsyncStorage.getItem(TOKEN_KEY);
+                if (token) {
+                    await SecureStore.setItemAsync(TOKEN_KEY, token).catch(() => {});
+                    await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
+                }
+            }
+            return token;
         } else {
             return await AsyncStorage.getItem(TOKEN_KEY);
         }
@@ -39,22 +48,25 @@ export const getToken = async () => {
 export const removeToken = async () => {
     try {
         if (isSecureStoreAvailable) {
-            await SecureStore.deleteItemAsync(TOKEN_KEY);
-        } else {
-            await AsyncStorage.removeItem(TOKEN_KEY);
+            await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
         }
+        await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
     } catch (error) {
         console.error('Error removing token:', error);
     }
 };
 
-// Save user data
+// Save user data (Stored in AsyncStorage to support rich profiles without 2048-byte SecureStore limit)
 export const saveUser = async (user) => {
     try {
+        if (!user) {
+            await removeUser();
+            return;
+        }
+        await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+        // Clean up legacy key from SecureStore if it was stored there previously
         if (isSecureStoreAvailable) {
-            await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
-        } else {
-            await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+            await SecureStore.deleteItemAsync(USER_KEY).catch(() => {});
         }
     } catch (error) {
         console.error('Error saving user:', error);
@@ -64,11 +76,14 @@ export const saveUser = async (user) => {
 // Get user data
 export const getUser = async () => {
     try {
-        let userData;
-        if (isSecureStoreAvailable) {
-            userData = await SecureStore.getItemAsync(USER_KEY);
-        } else {
-            userData = await AsyncStorage.getItem(USER_KEY);
+        let userData = await AsyncStorage.getItem(USER_KEY);
+        // Fallback/migration for existing users who previously stored profile in SecureStore
+        if (!userData && isSecureStoreAvailable) {
+            userData = await SecureStore.getItemAsync(USER_KEY).catch(() => null);
+            if (userData) {
+                await AsyncStorage.setItem(USER_KEY, userData);
+                await SecureStore.deleteItemAsync(USER_KEY).catch(() => {});
+            }
         }
         return userData ? JSON.parse(userData) : null;
     } catch (error) {
@@ -80,10 +95,9 @@ export const getUser = async () => {
 // Remove user data
 export const removeUser = async () => {
     try {
+        await AsyncStorage.removeItem(USER_KEY);
         if (isSecureStoreAvailable) {
-            await SecureStore.deleteItemAsync(USER_KEY);
-        } else {
-            await AsyncStorage.removeItem(USER_KEY);
+            await SecureStore.deleteItemAsync(USER_KEY).catch(() => {});
         }
     } catch (error) {
         console.error('Error removing user:', error);

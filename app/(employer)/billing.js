@@ -19,6 +19,7 @@ import { getToken } from '../../utils/storage';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Button from '../../components/ui/Button';
+import DocumentViewerModal from '../../components/ui/DocumentViewerModal';
 
 export default function BillingScreen() {
     const { t } = useLanguage();
@@ -26,9 +27,8 @@ export default function BillingScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [downloading, setDownloading] = useState(null);
-
-    // Derived root URL (removes /api from the end)
-    const API_ROOT = API_URL.replace(/\/api$/, '');
+    const [viewerVisible, setViewerVisible] = useState(false);
+    const [selectedInvoice, setSelectedInvoice] = useState(null);
 
     const fetchInvoices = async () => {
         try {
@@ -52,41 +52,18 @@ export default function BillingScreen() {
         fetchInvoices();
     };
 
-    const handleView = async (invoice) => {
-        if (!invoice.pdfUrl) {
-            Alert.alert(t('info'), t('invoice_not_generated') || 'Invoice PDF is not yet generated or available.');
-            return;
-        }
-
-        try {
-            const token = await getToken();
-            const baseUrl = invoice.pdfUrl.startsWith('http')
-                ? invoice.pdfUrl
-                : `${API_ROOT}${invoice.pdfUrl}`;
-
-            const urlWithToken = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}token=${token}`;
-
-            console.log('Mobile Billing: Opening PDF:', urlWithToken);
-            Linking.openURL(urlWithToken).catch(err => {
-                console.error('Failed to open URL:', err);
-                Alert.alert(t('error_title'), t('error_open_pdf'));
-            });
-        } catch (error) {
-            console.error('View error:', error);
-            Alert.alert(t('error_title'), t('error_auth_token'));
-        }
+    const handleView = (invoice) => {
+        setSelectedInvoice(invoice);
+        setViewerVisible(true);
     };
 
     const handleDownload = async (invoiceId) => {
         setDownloading(invoiceId);
         try {
-            const token = await getToken();
-            const url = `${API_URL}/payments/invoices/${invoiceId}/download?token=${token}`;
-            console.log('Mobile Billing: Downloading from:', url);
-            Linking.openURL(url);
+            await downloadInvoice(invoiceId);
         } catch (error) {
             console.error('Download error:', error);
-            Alert.alert(t('error_title'), t('error_download_trigger'));
+            Alert.alert(t('error_title'), error.message || t('error_download_trigger'));
         } finally {
             setDownloading(null);
         }
@@ -206,6 +183,18 @@ export default function BillingScreen() {
                     ))
                 )}
             </ScrollView>
+
+            <DocumentViewerModal
+                visible={viewerVisible}
+                onClose={() => {
+                    setViewerVisible(false);
+                    setSelectedInvoice(null);
+                }}
+                title={selectedInvoice ? `Invoice #${selectedInvoice.invoiceNumber}` : (t('invoice_preview') || 'Invoice Preview')}
+                invoiceId={selectedInvoice?._id}
+                fileUrl={selectedInvoice?.pdfUrl}
+                fileName={selectedInvoice ? `${selectedInvoice.invoiceNumber}.pdf` : 'invoice.pdf'}
+            />
         </View>
     );
 }

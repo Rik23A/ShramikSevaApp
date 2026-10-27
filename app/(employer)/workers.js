@@ -11,6 +11,8 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
+import * as Location from 'expo-location';
+import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { searchWorkers } from '../../services/userService';
 import { getMyJobs } from '../../services/jobService';
@@ -20,10 +22,12 @@ import WorkerFilterModal from '../../components/WorkerFilterModal';
 
 export default function WorkersScreen() {
     const { t } = useLanguage();
+    const { user } = useAuth();
     const [workers, setWorkers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [deviceCoords, setDeviceCoords] = useState(null);
 
     // Advanced Filters State
     const [isFilterVisible, setIsFilterVisible] = useState(false);
@@ -37,6 +41,50 @@ export default function WorkersScreen() {
 
     // Jobs for Smart Recommendations
     const [jobs, setJobs] = useState([]);
+
+    // Fetch device coordinates for distance calculation
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status === 'granted') {
+                    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                    if (isMounted && loc?.coords) {
+                        setDeviceCoords({
+                            latitude: loc.coords.latitude,
+                            longitude: loc.coords.longitude,
+                        });
+                    }
+                }
+            } catch (err) {
+                console.log('Location fetch error in workers screen:', err);
+            }
+        })();
+        return () => { isMounted = false; };
+    }, []);
+
+    const getReferenceCoords = useCallback(() => {
+        if (filters.jobId) {
+            const selectedJob = jobs.find(j => j._id === filters.jobId);
+            if (selectedJob?.location?.coordinates && selectedJob.location.coordinates.length === 2) {
+                return {
+                    longitude: selectedJob.location.coordinates[0],
+                    latitude: selectedJob.location.coordinates[1],
+                };
+            }
+        }
+        if (deviceCoords) {
+            return deviceCoords;
+        }
+        if (user?.location?.coordinates && user.location.coordinates.length === 2) {
+            return {
+                longitude: user.location.coordinates[0],
+                latitude: user.location.coordinates[1],
+            };
+        }
+        return null;
+    }, [filters.jobId, jobs, deviceCoords, user]);
 
     const fetchJobs = async () => {
         try {
@@ -69,6 +117,13 @@ export default function WorkersScreen() {
 
             // Availability always applies
             if (currentFilters.availability) params.availability = currentFilters.availability;
+
+            // Include coordinates for distance calculation and proximity sorting
+            const refCoords = getReferenceCoords();
+            if (refCoords) {
+                params.lat = refCoords.latitude;
+                params.lng = refCoords.longitude;
+            }
 
             const data = await searchWorkers(params);
             setWorkers(data?.workers || data || []);
@@ -187,7 +242,11 @@ export default function WorkersScreen() {
                 renderItem={({ item }) => (
                     <WorkerCard
                         worker={item}
+                        employerCoords={getReferenceCoords()}
                         onPress={() => router.push(`/worker/${item._id}`)}
+                        onWorkerUpdated={(updatedWorker) => {
+                            setWorkers(prev => prev.map(w => w._id === updatedWorker._id ? updatedWorker : w));
+                        }}
                     />
                 )}
                 contentContainerStyle={styles.listContent}

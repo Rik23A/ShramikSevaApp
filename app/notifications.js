@@ -10,6 +10,7 @@ import {
     StatusBar,
     Animated,
     Platform,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
@@ -50,39 +51,48 @@ export default function NotificationsScreen() {
         extrapolate: 'clamp',
     });
 
-    const fetchNotifications = async (isInitial = false, isRefresh = false) => {
-        if (!hasMore && !isInitial && !isRefresh) return;
-        
+    const fetchNotifications = async (pageToFetch = 1, isRefresh = false) => {
+        // Prevent duplicate calls
+        if (pageToFetch > 1 && (!hasMore || loadingMore || loading || refreshing)) return;
+
         try {
-            if (isInitial || isRefresh) {
-                setLoading(true);
-                setPage(1);
+            if (pageToFetch === 1) {
+                if (isRefresh) {
+                    setRefreshing(true);
+                } else {
+                    setLoading(true);
+                }
             } else {
                 setLoadingMore(true);
             }
 
-            const currentPage = (isInitial || isRefresh) ? 1 : page;
-            const params = { page: currentPage, limit: 15 };
+            const params = { page: pageToFetch, limit: 15 };
             if (activeTab === 'unread') {
                 params.isRead = false;
             }
             const data = await getNotifications(params);
             
             const newNotifications = data.notifications || [];
+            const totalPages = data.totalPages || 1;
             
-            if (isInitial || isRefresh) {
+            if (pageToFetch === 1) {
                 setNotifications(newNotifications);
             } else {
-                setNotifications(prev => [...prev, ...newNotifications]);
+                // Deduplicate by _id to avoid duplicate key issues
+                setNotifications(prev => {
+                    const existingIds = new Set(prev.map(item => item._id));
+                    const uniqueNew = newNotifications.filter(item => !existingIds.has(item._id));
+                    return [...prev, ...uniqueNew];
+                });
             }
 
-            setHasMore(newNotifications.length === 15);
+            setHasMore(pageToFetch < totalPages && newNotifications.length > 0);
             setTotalCount(data.totalCount || 0);
-            setPage(prev => (isInitial || isRefresh) ? 2 : prev + 1);
+            setPage(pageToFetch);
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
-            if (isInitial || isRefresh) {
-                Alert.alert(t('error_title'), t('failed_to_load_notifications'));
+            if (pageToFetch === 1) {
+                Alert.alert(t('error_title') || 'Error', t('failed_to_load_notifications') || 'Failed to load notifications');
             }
         } finally {
             setLoading(false);
@@ -92,17 +102,20 @@ export default function NotificationsScreen() {
     };
 
     useEffect(() => {
-        fetchNotifications(true);
+        setPage(1);
+        setHasMore(true);
+        fetchNotifications(1, false);
     }, [activeTab]);
 
     const handleRefresh = () => {
-        setRefreshing(true);
-        fetchNotifications(false, true);
+        setPage(1);
+        setHasMore(true);
+        fetchNotifications(1, true);
     };
 
     const handleLoadMore = () => {
         if (!loadingMore && hasMore && !loading && !refreshing) {
-            fetchNotifications();
+            fetchNotifications(page + 1, false);
         }
     };
 
@@ -112,7 +125,11 @@ export default function NotificationsScreen() {
 
         const handleNewNotification = (notification) => {
             console.log('🔔 New notification received:', notification);
-            setNotifications(prev => [notification, ...prev]);
+            setNotifications(prev => {
+                if (prev.some(item => item._id === notification._id)) return prev;
+                return [notification, ...prev];
+            });
+            setTotalCount(prev => prev + 1);
         };
 
         socket.on('notification:new', handleNewNotification);
@@ -679,7 +696,7 @@ export default function NotificationsScreen() {
                     ListFooterComponent={
                         loadingMore ? (
                             <View style={styles.loadMoreContainer}>
-                                <LoadingSpinner size="small" />
+                                <ActivityIndicator size="small" color={COLORS.primary} />
                             </View>
                         ) : null
                     }
@@ -718,13 +735,35 @@ export default function NotificationsScreen() {
                     }
                     ListHeaderComponent={
                         filteredNotifications.length > 0 && (
-                            <View style={styles.listHeader}>
+                            <View style={styles.listHeaderContainer}>
                                 <Text style={styles.listHeaderText}>
                                     {activeTab === 'all'
                                         ? `${t('filter_all')} (${totalCount})`
                                         : `${t('unread')} (${globalUnreadCount})`
                                     }
                                 </Text>
+                                <View style={styles.actionButtonsRow}>
+                                    {globalUnreadCount > 0 && (
+                                        <TouchableOpacity
+                                            style={styles.actionButton}
+                                            onPress={handleMarkAllAsRead}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Ionicons name="checkmark-done" size={14} color={COLORS.primary} />
+                                            <Text style={styles.actionButtonText}>{t('mark_all_read') || 'Mark all read'}</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                    {notifications.some(n => n.isRead) && (
+                                        <TouchableOpacity
+                                            style={[styles.actionButton, styles.clearActionButton]}
+                                            onPress={handleClearAll}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                                            <Text style={[styles.actionButtonText, styles.clearActionButtonText]}>{t('clear_all_read') || 'Clear read'}</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             </View>
                         )
                     }
@@ -812,16 +851,46 @@ const styles = StyleSheet.create({
     emptyListContent: {
         flexGrow: 1,
     },
-    listHeader: {
-        marginBottom: 16,
+    listHeaderContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
         paddingHorizontal: 4,
+        flexWrap: 'wrap',
+        gap: 8,
     },
     listHeaderText: {
-        fontSize: 14,
-        fontWeight: '500',
+        fontSize: 13,
+        fontWeight: '600',
         color: COLORS.textSecondary,
         letterSpacing: 0.5,
         textTransform: 'uppercase',
+    },
+    actionButtonsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.primary + '12',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 14,
+        gap: 4,
+    },
+    actionButtonText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.primary,
+    },
+    clearActionButton: {
+        backgroundColor: '#EF444415',
+    },
+    clearActionButtonText: {
+        color: '#EF4444',
     },
     headerButtons: {
         flexDirection: 'row',

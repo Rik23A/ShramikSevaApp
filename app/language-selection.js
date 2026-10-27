@@ -85,7 +85,7 @@ export default function LanguageSelectionScreen() {
             colors={[COLORS.background, '#E3F2FD', '#E1F5FE']}
             style={styles.container}
         >
-            <StatusBar style="dark" />
+            <StatusBar backgroundColor="#FFFFFF" style="dark" />
             <SafeAreaView style={{ flex: 1 }}>
                 <Animated.View style={[
                     styles.header,

@@ -21,9 +21,11 @@ import { getCurrentSubscription } from '../../services/subscriptionService';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useLanguage } from '../../context/LanguageContext';
+import ProfileCompletionCard from '../../components/ProfileCompletionCard';
+import ProfileCompletionModal from '../../components/ProfileCompletionModal';
 
 export default function EmployerDashboard() {
-    const { user } = useAuth();
+    const { user, refreshProfile } = useAuth();
     const { t } = useLanguage();
     const { socket, connected } = useSocket();
     const [dashboardData, setDashboardData] = useState(null);
@@ -40,7 +42,8 @@ export default function EmployerDashboard() {
             const [dashboard, analytics, hired] = await Promise.all([
                 getEmployerDashboard(),
                 getEmployerAnalytics(),
-                getHiredJobs()
+                getHiredJobs(),
+                refreshProfile ? refreshProfile() : Promise.resolve(null)
             ]);
 
             // Transform data for mobile structure compatibility
@@ -235,7 +238,7 @@ export default function EmployerDashboard() {
             )}
 
             {/* Quick Stats - Overlapping */}
-            <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.statsContainer}>
+            <Animated.View entering={FadeInDown.delay(200).springify()} style={[styles.statsContainer, isSubscriptionExpired && { marginTop: 12 }]}>
                 <TouchableOpacity style={styles.statWrapper} onPress={() => router.push('/(employer)/my-jobs')}>
                     <Card style={styles.statCard}>
                         <View style={[styles.statIcon, { backgroundColor: '#E3F2FD' }]}>
@@ -266,6 +269,9 @@ export default function EmployerDashboard() {
                     </Card>
                 </TouchableOpacity>
             </Animated.View>
+
+            {/* Profile Completion Status Card */}
+            <ProfileCompletionCard style={{ marginHorizontal: 16, marginTop: 0, marginBottom: 16 }} />
 
             {/* Expanded Stats Grid */}
             <View style={styles.sectionContainer}>
@@ -442,6 +448,9 @@ export default function EmployerDashboard() {
                 </View>
             )}
             <View style={{ height: 20 }} />
+
+            {/* Periodic Profile Completion Prompt Modal */}
+            <ProfileCompletionModal />
         </ScrollView>
     );
 }
@@ -480,7 +489,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         marginTop: -50, // Overlap
-        marginBottom: 24,
+        marginBottom: 16,
     },
     statWrapper: {
         flex: 1,

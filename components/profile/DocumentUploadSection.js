@@ -4,14 +4,17 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, API_URL } from '../../constants/config';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import { getUserDocuments, uploadDocument as apiUploadDocument } from '../../services/userService';
 import { uploadFile } from '../../services/uploadService';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import Input from '../ui/Input';
+import DocumentViewerModal from '../ui/DocumentViewerModal';
 
-const DocumentUploadSection = ({ docTypes }) => {
+const DocumentUploadSection = ({ docTypes, onDocumentUploaded }) => {
     const { t } = useLanguage();
+    const { refreshProfile } = useAuth();
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -19,6 +22,8 @@ const DocumentUploadSection = ({ docTypes }) => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [docName, setDocName] = useState('');
     const [docType, setDocType] = useState('');
+    const [viewerVisible, setViewerVisible] = useState(false);
+    const [selectedDoc, setSelectedDoc] = useState(null);
 
     const workerDefaults = [
         { label: t('doc_biodata'), value: 'biodata' },
@@ -109,6 +114,12 @@ const DocumentUploadSection = ({ docTypes }) => {
 
             // Refresh list
             fetchDocuments();
+            if (refreshProfile) {
+                refreshProfile().catch(e => console.log('Doc upload refreshProfile failed:', e));
+            }
+            if (onDocumentUploaded) {
+                onDocumentUploaded();
+            }
         } catch (error) {
             console.error('Upload error:', error);
             Alert.alert(t('error'), error.message || t('failed_to_upload_doc'));
@@ -143,34 +154,9 @@ const DocumentUploadSection = ({ docTypes }) => {
             </View>
             <TouchableOpacity
                 style={styles.viewButton}
-                onPress={async () => {
-                    try {
-                        let url = doc.url;
-                        if (!url) return;
-
-                        // Handle relative URLs
-                        if (!url.startsWith('http')) {
-                            // Remove /api if present in API_URL to get base URL, then append relative path
-                            const baseUrl = API_URL.endsWith('/api')
-                                ? API_URL.slice(0, -4)
-                                : API_URL;
-                            url = `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-                        }
-
-                        // Encode URL to handle spaces and special characters
-                        // This fixes "Not Found" errors for files with spaces in their names
-                        const encodedUrl = encodeURI(url);
-
-                        const supported = await Linking.canOpenURL(encodedUrl);
-                        if (supported) {
-                            await Linking.openURL(encodedUrl);
-                        } else {
-                            Alert.alert(t('error'), t('cannot_open_doc'));
-                        }
-                    } catch (error) {
-                        console.error('Error opening document:', error);
-                        Alert.alert(t('error'), t('failed_to_open_doc'));
-                    }
+                onPress={() => {
+                    setSelectedDoc(doc);
+                    setViewerVisible(true);
                 }}
             >
                 <Ionicons name="eye-outline" size={20} color={COLORS.primary} />
@@ -258,6 +244,17 @@ const DocumentUploadSection = ({ docTypes }) => {
                     {documents.map(renderDocumentItem)}
                 </View>
             )}
+
+            <DocumentViewerModal
+                visible={viewerVisible}
+                onClose={() => {
+                    setViewerVisible(false);
+                    setSelectedDoc(null);
+                }}
+                title={selectedDoc?.name || t('document_preview')}
+                fileUrl={selectedDoc?.url}
+                fileName={selectedDoc ? `${selectedDoc.name || 'document'}` : 'document'}
+            />
         </View>
     );
 };

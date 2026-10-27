@@ -8,18 +8,22 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "clean:android": "node -e \"const fs = require('fs'); fs.rmSync('android/app/build', { recursive: true, force: true }); console.log('Cleaned android/app/build');\"",
+    "build:bundle": "npm run clean:android && cd android && gradlew.bat bundleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
+    "@react-native-community/netinfo": "11.4.1",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@react-navigation/native-stack": "^7.3.16",
     "axios": "^1.13.4",
     "expo": "~54.0.33",
+    "expo-build-properties": "^57.0.8",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
@@ -53,6 +57,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-view-shot": "4.0.3",
     "react-native-web": "~0.21.0",
+    "react-native-webview": "^14.0.1",
     "react-native-worklets": "0.5.1",
     "socket.io-client": "^4.8.3"
   },

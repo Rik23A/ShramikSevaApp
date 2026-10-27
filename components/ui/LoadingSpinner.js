@@ -151,7 +151,7 @@ const LoadingSpinner = ({ message, fullScreen = false }) => {
                             { transform: [{ rotate: spin }] },
                         ]}
                     />
-                    <Image source={require('../../assets/images/icon.png')} style={styles.inlineIcon} resizeMode="contain" />
+                    <Image source={require('../../assets/images/splash-icon.png')} style={styles.inlineIcon} resizeMode="contain" />
                 </View>
                 {displayMessage && (
                     <Text style={styles.inlineMessage}>{displayMessage}</Text>
@@ -202,7 +202,7 @@ const LoadingSpinner = ({ message, fullScreen = false }) => {
 
                 {/* Inner icon */}
                 <View style={styles.logoInner}>
-                    <Image source={require('../../assets/images/icon.png')} style={{ width: 64, height: 64 }} resizeMode="contain" />
+                    <Image source={require('../../assets/images/splash-icon.png')} style={styles.logoIcon} resizeMode="contain" />
                 </View>
             </Animated.View>
 
@@ -372,9 +372,9 @@ const styles = StyleSheet.create({
     },
     inlineIcon: {
         position: 'absolute',
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
     },
     inlineMessage: {
         marginTop: 12,
@@ -431,10 +431,22 @@ const styles = StyleSheet.create({
         borderRightColor: COLORS.primary,
     },
     logoInner: {
-        width: 72,
-        height: 72,
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        overflow: 'hidden',
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+        elevation: 3,
+    },
+    logoIcon: {
+        width: 99,
+        height: 99,
     },
 
     /* App Name */

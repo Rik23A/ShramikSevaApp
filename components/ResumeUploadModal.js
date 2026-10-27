@@ -14,8 +14,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import { uploadFile } from '../services/uploadService';
 import { uploadDocument, getDocuments } from '../services/documentService';
 import { COLORS as Colors } from '../constants/config';
+import { useLanguage } from '../context/LanguageContext';
 
 const ResumeUploadModal = ({ visible, onClose, onUploadSuccess, onSkip }) => {
+    const { t } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [fetchingCVs, setFetchingCVs] = useState(false);
     const [existingCVs, setExistingCVs] = useState([]);

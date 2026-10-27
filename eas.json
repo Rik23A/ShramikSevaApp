@@ -14,12 +14,14 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://shramikseva.com/api"
+        "EXPO_PUBLIC_API_URL": "https://shramikseva.com/api",
+        "EXPO_PUBLIC_WEB_URL": "https://shramikseva.com"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://shramikseva.com/api"
+        "EXPO_PUBLIC_API_URL": "https://shramikseva.com/api",
+        "EXPO_PUBLIC_WEB_URL": "https://shramikseva.com"
       }
     }
   },

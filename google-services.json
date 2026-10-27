@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "499373971136",
+    "project_id": "uniqueappx-rik4l",
+    "storage_bucket": "uniqueappx-rik4l.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499373971136:android:d6419d2a1cfed90eb2ff25",
+        "android_client_info": {
+          "package_name": "com.shramikseva.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARGEXSG16gtVcYRer7GMdPKbkKCRap3Es"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -8,7 +8,7 @@ import { getToken } from '../utils/storage';
 import * as Notifications from 'expo-notifications';
 import { getUnreadCount } from '../services/notificationService';
 import { getWorkerWorkLogs } from '../services/worklogService';
-import { registerForPushNotificationsAsync } from '../services/pushNotificationService';
+import { registerForPushNotificationsAsync, showLocalNotification, syncBadgeCount } from '../services/pushNotificationService';
 
 const SocketContext = createContext();
 
@@ -27,9 +27,21 @@ export const SocketProvider = ({ children }) => {
     const [onlineUsers, setOnlineUsers] = useState(new Set());
     const [unreadCount, setUnreadCount] = useState(0);
     const [activeWorkLog, setActiveWorkLog] = useState(null);
+    const [activeConversationId, setActiveConversationId] = useState(null);
+    const activeConversationRef = useRef(null);
     const { user } = useAuth();
     const reconnectAttempts = useRef(0);
     const maxReconnectAttempts = 5;
+
+    // Keep ref in sync for socket listener closures
+    useEffect(() => {
+        activeConversationRef.current = activeConversationId;
+    }, [activeConversationId]);
+
+    // Automatically sync app launcher icon badge count
+    useEffect(() => {
+        syncBadgeCount(unreadCount);
+    }, [unreadCount]);
 
     // Refresh global data (unread count and active work logs)
     const refreshGlobalData = async () => {
@@ -38,7 +50,9 @@ export const SocketProvider = ({ children }) => {
             console.log('[SocketContext] Refreshing global data...');
             // 1. Fetch unread notification count
             const countData = await getUnreadCount();
-            setUnreadCount(countData.count || 0);
+            const count = countData.count || 0;
+            setUnreadCount(count);
+            syncBadgeCount(count);
 
             // 2. Fetch active work log for workers
             if (user.role === 'worker') {
@@ -72,7 +86,9 @@ export const SocketProvider = ({ children }) => {
                 setConnected(false);
             }
             setUnreadCount(0);
+            syncBadgeCount(0);
             setActiveWorkLog(null);
+            setActiveConversationId(null);
             return;
         }
 
@@ -98,7 +114,7 @@ export const SocketProvider = ({ children }) => {
                 activeSocket = io(socketUrl, {
                     path: '/api/socket.io',
                     auth: { token },
-                    transports: ['polling', 'websocket'], // Prefer polling for compatibility through proxies
+                    transports: ['websocket', 'polling'], // Prefer native WebSocket in React Native
                     reconnection: true,
                     reconnectionDelay: 1000,
                     reconnectionDelayMax: 5000,
@@ -148,20 +164,33 @@ export const SocketProvider = ({ children }) => {
                 // Listen for new notifications
                 activeSocket.on('notification:new', async (notification) => {
                     console.log('🔔 Socket Notification Received:', notification);
-                    setUnreadCount(prev => prev + 1);
+                    setUnreadCount(prev => {
+                        const newCount = prev + 1;
+                        syncBadgeCount(newCount);
+                        return newCount;
+                    });
 
-                    // Only show toast if app is active
+                    const type = notification.type || '';
+                    const notifTitle = notification.title || (type === 'new_message' ? 'New Message' : 'New Notification');
+                    const relatedConvId = notification.relatedId?.toString();
+
+                    // SMART SUPPRESSION: If user is actively viewing this specific conversation, suppress alert
+                    if (type === 'new_message' && relatedConvId && relatedConvId === activeConversationRef.current?.toString()) {
+                        console.log('🔇 Suppressing notification popup (user is actively inside chat):', relatedConvId);
+                        return;
+                    }
+
+                    // 1. Show sleek In-App Toast if app is currently in foreground
                     if (AppState.currentState === 'active') {
-                        const type = notification.type || '';
                         let toastType = 'info';
 
-                        if (type.includes('success') || type.includes('hired') || type.includes('accepted') || type.includes('otp')) toastType = 'success';
+                        if (type.includes('success') || type.includes('hired') || type.includes('accepted') || type.includes('otp') || type.includes('approved') || type.includes('verified')) toastType = 'success';
                         else if (type.includes('error') || type.includes('rejected') || type.includes('expired')) toastType = 'error';
                         else if (type.includes('warning') || type.includes('pending')) toastType = 'warning';
 
                         showToast({
                             type: toastType,
-                            title: notification.title || (type === 'new_message' ? 'New Message' : 'New Notification'),
+                            title: notifTitle,
                             message: notification.message,
                             action: notification.actionUrl ? {
                                 label: (type === 'new_message' || type === 'new_conversation') ? 'Reply' : 'View',
@@ -169,6 +198,19 @@ export const SocketProvider = ({ children }) => {
                             } : undefined
                         });
                     }
+
+                    // 2. ALWAYS trigger native device status bar notification / push notification for all in-app notifications
+                    showLocalNotification({
+                        title: notifTitle,
+                        message: notification.message || '',
+                        data: {
+                            _id: notification._id?.toString(),
+                            notificationId: notification._id?.toString(),
+                            actionUrl: notification.actionUrl,
+                            relatedId: notification.relatedId,
+                            type: notification.type,
+                        },
+                    });
                 });
 
                 // Listen for unread count updates
@@ -179,6 +221,7 @@ export const SocketProvider = ({ children }) => {
 
                 activeSocket.on('notification:allRead', () => {
                     setUnreadCount(0);
+                    syncBadgeCount(0);
                 });
 
                 // Listen for work log updates
@@ -322,6 +365,8 @@ export const SocketProvider = ({ children }) => {
         onlineUsers,
         unreadCount,
         activeWorkLog,
+        activeConversationId,
+        setActiveConversationId,
         refreshGlobalData,
         emitTypingStart,
         emitTypingStop,

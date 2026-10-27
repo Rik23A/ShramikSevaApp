@@ -53,40 +53,42 @@ const renderMessageStatus = (status) => {
 // NOTE: With inverted FlatList, item[0] is the NEWEST message (rendered at bottom).
 // "showTail" is true when the message AFTER this one (index+1 in reversed data = older)
 // is from a different sender — meaning this is the first in a consecutive group visually.
-const MessageItem = React.memo(({ item, isMyMessage, showTail }) => (
-    <View
-        style={[
-            styles.messageContainer,
-            isMyMessage ? styles.myMessageContainer : styles.otherMessageContainer,
-            !showTail && styles.consecutiveMessage,
-        ]}
-    >
+const MessageItem = React.memo(function MessageItem({ item, isMyMessage, showTail }) {
+    return (
         <View
             style={[
-                styles.messageBubble,
-                isMyMessage ? styles.myMessageBubble : styles.otherMessageBubble,
-                // Tail at the BOTTOM corner (WhatsApp style)
-                showTail && (isMyMessage ? styles.myBubbleTail : styles.otherBubbleTail),
+                styles.messageContainer,
+                isMyMessage ? styles.myMessageContainer : styles.otherMessageContainer,
+                !showTail && styles.consecutiveMessage,
             ]}
         >
-            <Text
-                style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.otherMessageText]}
-                selectable
+            <View
+                style={[
+                    styles.messageBubble,
+                    isMyMessage ? styles.myMessageBubble : styles.otherMessageBubble,
+                    // Tail at the BOTTOM corner (WhatsApp style)
+                    showTail && (isMyMessage ? styles.myBubbleTail : styles.otherBubbleTail),
+                ]}
             >
-                {item.text}
-            </Text>
-            <View style={[styles.messageFooter, isMyMessage ? styles.myMessageFooter : styles.otherMessageFooter]}>
-                <Text style={styles.messageTime}>
-                    {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                <Text
+                    style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.otherMessageText]}
+                    selectable
+                >
+                    {item.text}
                 </Text>
-                {isMyMessage && renderMessageStatus(item.status)}
+                <View style={[styles.messageFooter, isMyMessage ? styles.myMessageFooter : styles.otherMessageFooter]}>
+                    <Text style={styles.messageTime}>
+                        {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </Text>
+                    {isMyMessage && renderMessageStatus(item.status)}
+                </View>
             </View>
         </View>
-    </View>
-));
+    );
+});
 
 // ─── Animated typing indicator ─────────────────────────────────────────────────
-const TypingIndicator = React.memo(() => {
+const TypingIndicator = React.memo(function TypingIndicator() {
     const d1 = useRef(new Animated.Value(0)).current;
     const d2 = useRef(new Animated.Value(0)).current;
     const d3 = useRef(new Animated.Value(0)).current;
@@ -155,7 +157,19 @@ export default function ChatScreen() {
 
     const typingTimeoutRef = useRef(null);
     const fadeAnim = useRef(new Animated.Value(0)).current;
-    const { socket, connected, isUserOnline, updateOnlineStatus, markMessageAsRead } = useSocket();
+    const { socket, connected, isUserOnline, updateOnlineStatus, markMessageAsRead, setActiveConversationId } = useSocket();
+
+    // Register active conversation ID for smart in-chat notification suppression
+    useEffect(() => {
+        if (id && setActiveConversationId) {
+            setActiveConversationId(id);
+        }
+        return () => {
+            if (setActiveConversationId) {
+                setActiveConversationId(null);
+            }
+        };
+    }, [id, setActiveConversationId]);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
@@ -830,8 +844,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 60,
-        // inverted list: flip empty state so it reads correctly
-        transform: [{ scaleY: -1 }],
     },
     emptyIconContainer: {
         width: 80,

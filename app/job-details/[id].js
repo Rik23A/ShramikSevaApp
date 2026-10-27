@@ -178,7 +178,7 @@ export default function JobDetailScreen() {
 
     return (
         <View style={styles.container}>
-            <StatusBar style="light" />
+            <StatusBar backgroundColor="#1976D2" style="light" />
             <Stack.Screen
                 options={{
                     title: t('job_details'),

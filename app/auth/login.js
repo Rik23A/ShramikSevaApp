@@ -206,7 +206,9 @@ export default function LoginScreen() {
                                 end={{ x: 1, y: 1 }}
                             >
                                 <View style={styles.headerContent}>
-                                    <Image source={require('../../assets/images/icon.png')} style={{ width: 80, height: 80, marginBottom: 16 }} resizeMode="contain" />
+                                    <View style={{ width: 88, height: 88, marginBottom: 16, borderRadius: 24, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 }}>
+                                        <Image source={require('../../assets/images/splash-icon.png')} style={{ width: 150, height: 150 }} resizeMode="contain" />
+                                    </View>
                                     <Text style={styles.headerTitle}>{t('app_name_hi')}</Text>
                                     <Text style={styles.headerSubtitle}>{t('app_name')}</Text>
                                     <Text style={styles.headerTagline}>{t('tagline')}</Text>
@@ -283,7 +285,7 @@ export default function LoginScreen() {
                                                     setPassword(text);
                                                     setError('');
                                                 }}
-                                                secureTextEntry
+                                                isPassword
                                                 icon="lock-closed-outline"
                                                 error={error}
                                             />

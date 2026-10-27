@@ -54,6 +54,16 @@ export const AuthProvider = ({ children }) => {
             setToken(authToken);
             setUser(userInfo);
 
+            // Immediately fetch full profile so all documents, skills & completion status sync
+            getProfile()
+                .then(async (freshProfile) => {
+                    if (freshProfile) {
+                        await saveUser(freshProfile);
+                        setUser(freshProfile);
+                    }
+                })
+                .catch(err => console.log('Profile sync after login:', err?.message));
+
             return true;
         } catch (error) {
             console.error('Login error:', error);
@@ -72,21 +82,25 @@ export const AuthProvider = ({ children }) => {
     };
 
     const updateUser = async (newUserData) => {
-        const updatedUser = { ...user, ...newUserData };
-        await saveUser(updatedUser);
-        setUser(updatedUser);
+        setUser((prevUser) => {
+            const updatedUser = { ...(prevUser || {}), ...newUserData };
+            saveUser(updatedUser).catch(e => console.warn('Failed to persist user update:', e?.message));
+            return updatedUser;
+        });
     };
 
     // Refresh user profile from backend
     const refreshProfile = async () => {
         try {
             const freshProfile = await getProfile();
-            await saveUser(freshProfile);
-            setUser(freshProfile);
+            if (freshProfile) {
+                await saveUser(freshProfile);
+                setUser(freshProfile);
+            }
             return freshProfile;
         } catch (error) {
-            console.error('[AuthContext] Failed to refresh profile:', error);
-            throw error;
+            console.error('[AuthContext] Failed to refresh profile:', error?.message);
+            return null;
         }
     };
 

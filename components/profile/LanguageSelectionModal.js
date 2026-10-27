@@ -1,61 +1,94 @@
 import React from 'react';
-import { View, Text, Modal, TouchableOpacity, FlatList, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, TouchableWithoutFeedback, FlatList, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/config';
-import { LANGUAGES } from '../../constants/translations';
+import { LANGUAGES as TRANSLATION_LANGUAGES } from '../../constants/translations';
 
 const { height } = Dimensions.get('window');
 
+const DEFAULT_LANGUAGES = [
+    { code: 'en', label: 'English', native: 'English', icon: '🌐' },
+    { code: 'hi', label: 'Hindi', native: 'हिन्दी', icon: '🇮🇳' },
+    { code: 'mr', label: 'Marathi', native: 'मराठी', icon: '🇮🇳' },
+    { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી', icon: '🇮🇳' },
+    { code: 'ta', label: 'Tamil', native: 'தமிழ்', icon: '🇮🇳' },
+    { code: 'te', label: 'Telugu', native: 'తెలుగు', icon: '🇮🇳' },
+    { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ', icon: '🇮🇳' },
+    { code: 'bn', label: 'Bengali', native: 'বাংলা', icon: '🇮🇳' },
+    { code: 'ml', label: 'Malayalam', native: 'മലയാളം', icon: '🇮🇳' },
+    { code: 'pa', label: 'Punjabi', native: 'ਪੰਜਾਬੀ', icon: '🇮🇳' },
+    { code: 'or', label: 'Odia', native: 'ଓଡ଼িଆ', icon: '🇮🇳' },
+    { code: 'as', label: 'Assamese', native: 'অসমীয়া', icon: '🇮🇳' },
+];
+
 const LanguageSelectionModal = ({ visible, onClose, onSelect, currentLocale, t }) => {
+    const listData = (TRANSLATION_LANGUAGES && TRANSLATION_LANGUAGES.length > 0) ? TRANSLATION_LANGUAGES : DEFAULT_LANGUAGES;
+    const titleText = (t && typeof t === 'function' ? t('change_language') : 'Change Language') || 'Change Language';
+
     return (
         <Modal
-            visible={visible}
+            visible={!!visible}
             transparent={true}
             animationType="slide"
             onRequestClose={onClose}
         >
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>{t('change_language')}</Text>
-                        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <Ionicons name="close" size={24} color={COLORS.text} />
-                        </TouchableOpacity>
-                    </View>
+            <TouchableOpacity 
+                style={styles.modalOverlay} 
+                activeOpacity={1} 
+                onPress={onClose}
+            >
+                <TouchableWithoutFeedback>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <View style={styles.titleRow}>
+                                <Ionicons name="language" size={22} color={COLORS.primary} style={{ marginRight: 8 }} />
+                                <Text style={styles.modalTitle}>{titleText}</Text>
+                            </View>
+                            <TouchableOpacity onPress={onClose} style={styles.closeButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <Ionicons name="close" size={24} color={COLORS.text} />
+                            </TouchableOpacity>
+                        </View>
 
-                    <View style={styles.listContainer}>
-                        <FlatList
-                            data={LANGUAGES}
-                            keyExtractor={(item) => item.code}
-                            renderItem={({ item }) => (
-                                <TouchableOpacity
-                                    style={[
-                                        styles.langOption,
-                                        currentLocale === item.code && styles.selectedLang
-                                    ]}
-                                    onPress={() => onSelect(item.code)}
-                                >
-                                    <Text style={styles.langIcon}>{item.icon}</Text>
-                                    <View style={styles.langTextContainer}>
-                                        <Text style={[
-                                            styles.langLabel,
-                                            currentLocale === item.code && styles.selectedLangText
-                                        ]}>
-                                            {item.label}
-                                        </Text>
-                                        <Text style={styles.langNative}>{item.native || item.label}</Text>
-                                    </View>
-                                    {currentLocale === item.code && (
-                                        <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
-                                    )}
-                                </TouchableOpacity>
-                            )}
-                            showsVerticalScrollIndicator={false}
-                            contentContainerStyle={{ paddingBottom: 20 }}
-                        />
+                        <View style={styles.listContainer}>
+                            <FlatList
+                                data={listData}
+                                keyExtractor={(item) => item.code}
+                                renderItem={({ item }) => {
+                                    const isSelected = currentLocale === item.code;
+                                    return (
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.langOption,
+                                                isSelected && styles.selectedLang
+                                            ]}
+                                            onPress={() => {
+                                                if (onSelect) onSelect(item.code);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text style={styles.langIcon}>{item.icon || '🌐'}</Text>
+                                            <View style={styles.langTextContainer}>
+                                                <Text style={[
+                                                    styles.langLabel,
+                                                    isSelected && styles.selectedLangText
+                                                ]}>
+                                                    {item.label || item.name}
+                                                </Text>
+                                                <Text style={styles.langNative}>{item.native || item.label}</Text>
+                                            </View>
+                                            {isSelected && (
+                                                <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                }}
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={{ paddingBottom: 20 }}
+                            />
+                        </View>
                     </View>
-                </View>
-            </View>
+                </TouchableWithoutFeedback>
+            </TouchableOpacity>
         </Modal>
     );
 };
@@ -84,6 +117,10 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
         paddingBottom: 16,
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     modalTitle: {
         fontSize: 20,

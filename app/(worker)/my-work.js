@@ -565,10 +565,10 @@ export default function MyWorkScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
-    // ... existing modal states ...
     const [startWorkModalVisible, setStartWorkModalVisible] = useState(false);
     const [endWorkModalVisible, setEndWorkModalVisible] = useState(false);
     const [selectedJobId, setSelectedJobId] = useState(null);
+    const [selectedJob, setSelectedJob] = useState(null);
     const [selectedApplication, setSelectedApplication] = useState(null);
     const [showStatusModal, setShowStatusModal] = useState(false);
 
@@ -680,10 +680,12 @@ export default function MyWorkScreen() {
                             type="assigned"
                             workLogs={workLogs}
                             onStartWork={(job) => {
+                                setSelectedJob(job);
                                 setSelectedJobId(job._id);
                                 setStartWorkModalVisible(true);
                             }}
                             onEndWork={(job) => {
+                                setSelectedJob(job);
                                 setSelectedJobId(job._id);
                                 setEndWorkModalVisible(true);
                             }}
@@ -785,22 +787,6 @@ export default function MyWorkScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Header */}
-            { /*     <View style={styles.header}>
-                <Text style={styles.headerTitle}>My Work</Text>
-                <View style={styles.headerStats}>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{assignedJobs.length}</Text>
-                        <Text style={styles.statLabel}>Active</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{hiringRequests.length}</Text>
-                        <Text style={styles.statLabel}>Offers</Text>
-                    </View>
-                </View>
-            </View>
-*/}
             {/* Animated Tab Bar */}
             <AnimatedTabBar
                 activeTab={activeTab}
@@ -831,9 +817,11 @@ export default function MyWorkScreen() {
                 visible={startWorkModalVisible}
                 onClose={() => {
                     setStartWorkModalVisible(false);
+                    setSelectedJob(null);
                     setSelectedJobId(null);
                 }}
                 jobId={selectedJobId}
+                jobData={selectedJob}
                 onSuccess={() => {
                     fetchData(); // Refresh data after successful start
                 }}
@@ -843,9 +831,11 @@ export default function MyWorkScreen() {
                 visible={endWorkModalVisible}
                 onClose={() => {
                     setEndWorkModalVisible(false);
+                    setSelectedJob(null);
                     setSelectedJobId(null);
                 }}
                 jobId={selectedJobId}
+                jobData={selectedJob}
                 onSuccess={() => {
                     fetchData(); // Refresh data after successful end
                 }}

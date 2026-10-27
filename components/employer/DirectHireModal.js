@@ -52,12 +52,12 @@ export default function DirectHireModal({ visible, onClose, workerId, workerName
         setLoading(true);
         try {
             await hireWorker(selectedJob, workerId);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Success);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             showToast('success', t('job_offer_sent'), t('job_offer_success_msg', { name: workerName }));
             onClose(true); // pass true to indicate success
         } catch (error) {
             console.error('Hire error:', error);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Error);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             const message = error.response?.data?.message || t('failed_send_offer');
             Alert.alert(t('error'), message);
         } finally {

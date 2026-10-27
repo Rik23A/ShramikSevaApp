@@ -45,7 +45,16 @@ export const LanguageProvider = ({ children }) => {
         }
 
         if (!value) {
-            value = translations['en'][key] || key;
+            let enVal = translations['en'];
+            for (const k of keys) {
+                enVal = enVal?.[k];
+                if (!enVal) break;
+            }
+            value = enVal || translations['en']?.[key] || key;
+        }
+
+        if (typeof value === 'object' && value !== null) {
+            return key;
         }
 
         // Replace placeholders like {name} with values from params

@@ -13,8 +13,8 @@ export const updateProfile = async (profileData) => {
 };
 
 // Get public profile of a user
-export const getPublicProfile = async (userId) => {
-    const response = await API.get(`/users/profile/${userId}`);
+export const getPublicProfile = async (userId, params) => {
+    const response = await API.get(`/users/profile/${userId}`, { params });
     return response.data;
 };
 
@@ -79,9 +79,10 @@ export const uploadDocument = async (documentData) => {
 };
 
 // Update push token for notifications
-export const updatePushToken = async (pushToken) => {
+export const updatePushToken = async (payload) => {
     try {
-        const response = await API.put('/users/push-token', { pushToken });
+        const body = typeof payload === 'string' ? { pushToken: payload } : payload;
+        const response = await API.put('/users/push-token', body);
         console.log('✅ Push token updated successfully on backend');
         return response.data;
     } catch (error) {
@@ -95,3 +96,16 @@ export const changePassword = async (newPassword) => {
     const response = await API.put('/users/change-password', { newPassword });
     return response.data;
 };
+
+// Send OTP to new mobile number
+export const initiateChangeMobile = async (newMobile) => {
+    const response = await API.post('/users/change-mobile/send-otp', { newMobile });
+    return response.data;
+};
+
+// Verify OTP and update mobile number
+export const verifyChangeMobile = async (newMobile, otp) => {
+    const response = await API.post('/users/change-mobile/verify-otp', { newMobile, otp });
+    return response.data;
+};
+
